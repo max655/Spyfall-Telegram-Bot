@@ -52,28 +52,28 @@ def insert_data():
         with db as conn:
             cursor = conn.cursor()
 
-            cursor.execute("INSERT INTO Dictionaries (name) VALUES ('Офіс')")
-            cursor.execute("INSERT INTO Dictionaries (name) VALUES ('Пляж')")
-            cursor.execute("INSERT INTO Dictionaries (name) VALUES ('Університет')")
-            cursor.execute("INSERT INTO Dictionaries (name) VALUES ('Супермаркет')")
-            cursor.execute("INSERT INTO Dictionaries (name) VALUES ('Ресторан')")
+            cursor.execute("INSERT INTO Dictionaries (name) VALUES (N'Офіс')")
+            cursor.execute("INSERT INTO Dictionaries (name) VALUES (N'Пляж')")
+            cursor.execute("INSERT INTO Dictionaries (name) VALUES (N'Університет')")
+            cursor.execute("INSERT INTO Dictionaries (name) VALUES (N'Супермаркет')")
+            cursor.execute("INSERT INTO Dictionaries (name) VALUES (N'Ресторан')")
 
-            cursor.execute("INSERT INTO Places (name) VALUES ('Конференц-зал')")
-            cursor.execute("INSERT INTO Places (name) VALUES ('Кабінет')")
-            cursor.execute("INSERT INTO Places (name) VALUES ('Відділ IT')")
+            cursor.execute("INSERT INTO Places (name) VALUES (N'Конференц-зал')")
+            cursor.execute("INSERT INTO Places (name) VALUES (N'Кабінет')")
+            cursor.execute("INSERT INTO Places (name) VALUES (N'Відділ IT')")
 
-            cursor.execute("INSERT INTO Places (name) VALUES ('Басейн')")
-            cursor.execute("INSERT INTO Places (name) VALUES ('Тераса')")
-            cursor.execute("INSERT INTO Places (name) VALUES ('Бар')")
+            cursor.execute("INSERT INTO Places (name) VALUES (N'Басейн')")
+            cursor.execute("INSERT INTO Places (name) VALUES (N'Тераса')")
+            cursor.execute("INSERT INTO Places (name) VALUES (N'Бар')")
 
-            cursor.execute("INSERT INTO Places (name) VALUES ('Бібліотека')")
-            cursor.execute("INSERT INTO Places (name) VALUES ('Лабораторія')")
+            cursor.execute("INSERT INTO Places (name) VALUES (N'Бібліотека')")
+            cursor.execute("INSERT INTO Places (name) VALUES (N'Лабораторія')")
 
-            cursor.execute("INSERT INTO Places (name) VALUES ('Каса')")
-            cursor.execute("INSERT INTO Places (name) VALUES ('Коридор з полицями')")
+            cursor.execute("INSERT INTO Places (name) VALUES (N'Каса')")
+            cursor.execute("INSERT INTO Places (name) VALUES (N'Коридор з полицями')")
 
-            cursor.execute("INSERT INTO Places (name) VALUES ('Зал зі столиками')")
-            cursor.execute("INSERT INTO Places (name) VALUES ('Кухня')")
+            cursor.execute("INSERT INTO Places (name) VALUES (N'Зал зі столиками')")
+            cursor.execute("INSERT INTO Places (name) VALUES (N'Кухня')")
 
             cursor.execute("INSERT INTO DictionaryPlaces (dictionary_id, place_id) VALUES (1, 1)")
             cursor.execute("INSERT INTO DictionaryPlaces (dictionary_id, place_id) VALUES (1, 2)")
@@ -85,6 +85,23 @@ def insert_data():
 
             cursor.execute("INSERT INTO DictionaryPlaces (dictionary_id, place_id) VALUES (3, 2)")
             cursor.execute("INSERT INTO DictionaryPlaces (dictionary_id, place_id) VALUES (3, 7)")
+            cursor.execute("INSERT INTO DictionaryPlaces (dictionary_id, place_id) VALUES (3, 8)")
+
+            cursor.execute("INSERT INTO DictionaryPlaces (dictionary_id, place_id) VALUES (4, 9)")
+            cursor.execute("INSERT INTO DictionaryPlaces (dictionary_id, place_id) VALUES (4, 10)")
+
+            cursor.execute("INSERT INTO DictionaryPlaces (dictionary_id, place_id) VALUES (5, 11)")
+            cursor.execute("INSERT INTO DictionaryPlaces (dictionary_id, place_id) VALUES (5, 12)")
+
+
+def insert_connections():
+    with closing(connect_db()) as db:
+        with db as conn:
+            cursor = conn.cursor()
+            # cursor.execute("INSERT INTO DictionaryPlaces (dictionary_id, place_id) VALUES (2, 6)")
+
+            # cursor.execute("INSERT INTO DictionaryPlaces (dictionary_id, place_id) VALUES (3, 2)")
+            # cursor.execute("INSERT INTO DictionaryPlaces (dictionary_id, place_id) VALUES (3, 7)")
             cursor.execute("INSERT INTO DictionaryPlaces (dictionary_id, place_id) VALUES (3, 8)")
 
             cursor.execute("INSERT INTO DictionaryPlaces (dictionary_id, place_id) VALUES (4, 9)")
@@ -117,8 +134,93 @@ def view_table(table):
             for row in rows:
                 print(row)
 
+        return rows
+
+
+def fetch_constraints():
+    query = '''
+    SELECT 
+        tc.constraint_type,
+        tc.table_name,
+        tc.constraint_name
+    FROM 
+        INFORMATION_SCHEMA.TABLE_CONSTRAINTS AS tc
+    WHERE 
+        tc.constraint_type IN ('PRIMARY KEY', 'FOREIGN KEY')
+    ORDER BY 
+        CASE 
+            WHEN tc.constraint_type = 'FOREIGN KEY' THEN 1 
+            ELSE 2 
+        END
+    '''
+
+    with closing(connect_db()) as db:
+        with db as conn:
+            cursor = conn.cursor()
+            cursor.execute(query)
+            return cursor.fetchall()
+
+
+def drop_constraints(constraints):
+    with closing(connect_db()) as db:
+        with db as conn:
+            cursor = conn.cursor()
+            for constraint_type, table_name, constraint_name in constraints:
+                drop_query = f"ALTER TABLE {table_name} DROP CONSTRAINT {constraint_name}"
+                print(f"Executing: {drop_query}")
+                cursor.execute(drop_query)
+            print("All specified constraints have been dropped.")
+
+
+def drop_table(table_name):
+    with closing(connect_db()) as db:
+        with db as conn:
+            cursor = conn.cursor()
+            cursor.execute(f'DROP TABLE {table_name}')
+
 
 if __name__ == "__main__":
+    """constraints = fetch_constraints()
+    print("Constraints to be dropped:")
+    for constraint in constraints:
+        print(constraint)
+
+    # Drop constraints
+    drop_constraints(constraints)
+
+    # Verify by fetching constraints again
+    remaining_constraints = fetch_constraints()
+    if not remaining_constraints:
+        print("All primary and foreign key constraints have been successfully dropped.")
+    else:
+        print("Remaining constraints:")
+        for constraint in remaining_constraints:
+            print(constraint)"""
+
+    """constraints = fetch_constraints()
+    drop_constraints(constraints)
+
+    drop_table('Dictionaries')
+    drop_table('Places')
+    drop_table('DictionaryPlaces')"""
+
+    # create_tables()
+    # insert_data()
+
+    view_table('DictionaryPlaces')
     view_table('Places')
+    view_table('Dictionaries')
+
+    insert_connections()
+
+    constraints = fetch_constraints()
+    print("All constraints:")
+    for constraint in constraints:
+        print(constraint)
+
+    view_table('DictionaryPlaces')
+    view_table('Places')
+    view_table('Dictionaries')
+
     places = get_places_for_dictionary(5)
     print(places)
