@@ -41,7 +41,7 @@ def create_tables():
                dictionary_id INT,
                place_id INT,
                FOREIGN KEY (dictionary_id) REFERENCES Dictionaries(id),
-               FOREIGN KEY (place_id) REFERENCES Dictionaries(id),
+               FOREIGN KEY (place_id) REFERENCES Places(id),
                PRIMARY KEY (dictionary_id, place_id)
             )
             ''')
@@ -75,40 +75,33 @@ def insert_data():
             cursor.execute("INSERT INTO Places (name) VALUES (N'Зал зі столиками')")
             cursor.execute("INSERT INTO Places (name) VALUES (N'Кухня')")
 
-            cursor.execute("INSERT INTO DictionaryPlaces (dictionary_id, place_id) VALUES (1, 1)")
-            cursor.execute("INSERT INTO DictionaryPlaces (dictionary_id, place_id) VALUES (1, 2)")
-            cursor.execute("INSERT INTO DictionaryPlaces (dictionary_id, place_id) VALUES (1, 3)")
-
-            cursor.execute("INSERT INTO DictionaryPlaces (dictionary_id, place_id) VALUES (2, 4)")
-            cursor.execute("INSERT INTO DictionaryPlaces (dictionary_id, place_id) VALUES (2, 5)")
-            cursor.execute("INSERT INTO DictionaryPlaces (dictionary_id, place_id) VALUES (2, 6)")
-
-            cursor.execute("INSERT INTO DictionaryPlaces (dictionary_id, place_id) VALUES (3, 2)")
-            cursor.execute("INSERT INTO DictionaryPlaces (dictionary_id, place_id) VALUES (3, 7)")
-            cursor.execute("INSERT INTO DictionaryPlaces (dictionary_id, place_id) VALUES (3, 8)")
-
-            cursor.execute("INSERT INTO DictionaryPlaces (dictionary_id, place_id) VALUES (4, 9)")
-            cursor.execute("INSERT INTO DictionaryPlaces (dictionary_id, place_id) VALUES (4, 10)")
-
-            cursor.execute("INSERT INTO DictionaryPlaces (dictionary_id, place_id) VALUES (5, 11)")
-            cursor.execute("INSERT INTO DictionaryPlaces (dictionary_id, place_id) VALUES (5, 12)")
-
 
 def insert_connections():
     with closing(connect_db()) as db:
         with db as conn:
-            cursor = conn.cursor()
-            # cursor.execute("INSERT INTO DictionaryPlaces (dictionary_id, place_id) VALUES (2, 6)")
+            try:
+                cursor = conn.cursor()
 
-            # cursor.execute("INSERT INTO DictionaryPlaces (dictionary_id, place_id) VALUES (3, 2)")
-            # cursor.execute("INSERT INTO DictionaryPlaces (dictionary_id, place_id) VALUES (3, 7)")
-            cursor.execute("INSERT INTO DictionaryPlaces (dictionary_id, place_id) VALUES (3, 8)")
+                cursor.execute("INSERT INTO DictionaryPlaces (dictionary_id, place_id) VALUES (1, 1)")
+                cursor.execute("INSERT INTO DictionaryPlaces (dictionary_id, place_id) VALUES (1, 2)")
+                cursor.execute("INSERT INTO DictionaryPlaces (dictionary_id, place_id) VALUES (1, 3)")
 
-            cursor.execute("INSERT INTO DictionaryPlaces (dictionary_id, place_id) VALUES (4, 9)")
-            cursor.execute("INSERT INTO DictionaryPlaces (dictionary_id, place_id) VALUES (4, 10)")
+                cursor.execute("INSERT INTO DictionaryPlaces (dictionary_id, place_id) VALUES (2, 4)")
+                cursor.execute("INSERT INTO DictionaryPlaces (dictionary_id, place_id) VALUES (2, 5)")
+                cursor.execute("INSERT INTO DictionaryPlaces (dictionary_id, place_id) VALUES (2, 6)")
 
-            cursor.execute("INSERT INTO DictionaryPlaces (dictionary_id, place_id) VALUES (5, 11)")
-            cursor.execute("INSERT INTO DictionaryPlaces (dictionary_id, place_id) VALUES (5, 12)")
+                cursor.execute("INSERT INTO DictionaryPlaces (dictionary_id, place_id) VALUES (3, 2)")
+                cursor.execute("INSERT INTO DictionaryPlaces (dictionary_id, place_id) VALUES (3, 7)")
+                cursor.execute("INSERT INTO DictionaryPlaces (dictionary_id, place_id) VALUES (3, 8)")
+
+                cursor.execute("INSERT INTO DictionaryPlaces (dictionary_id, place_id) VALUES (4, 9)")
+                cursor.execute("INSERT INTO DictionaryPlaces (dictionary_id, place_id) VALUES (4, 10)")
+
+                cursor.execute("INSERT INTO DictionaryPlaces (dictionary_id, place_id) VALUES (5, 11)")
+                cursor.execute("INSERT INTO DictionaryPlaces (dictionary_id, place_id) VALUES (5, 12)")
+            except pymssql.Error as e:
+                print("An error occurred:", e)
+                conn.rollback()
 
 
 def get_places_for_dictionary(dictionary_id):
@@ -133,8 +126,6 @@ def view_table(table):
             rows = cursor.fetchall()
             for row in rows:
                 print(row)
-
-        return rows
 
 
 def fetch_constraints():
@@ -181,46 +172,22 @@ def drop_table(table_name):
 
 if __name__ == "__main__":
     """constraints = fetch_constraints()
-    print("Constraints to be dropped:")
-    for constraint in constraints:
-        print(constraint)
-
-    # Drop constraints
-    drop_constraints(constraints)
-
-    # Verify by fetching constraints again
-    remaining_constraints = fetch_constraints()
-    if not remaining_constraints:
-        print("All primary and foreign key constraints have been successfully dropped.")
-    else:
-        print("Remaining constraints:")
-        for constraint in remaining_constraints:
-            print(constraint)"""
-
-    """constraints = fetch_constraints()
     drop_constraints(constraints)
 
     drop_table('Dictionaries')
     drop_table('Places')
-    drop_table('DictionaryPlaces')"""
+    drop_table('DictionaryPlaces')
 
-    # create_tables()
-    # insert_data()
-
-    view_table('DictionaryPlaces')
-    view_table('Places')
-    view_table('Dictionaries')
-
-    insert_connections()
+    create_tables()
+    insert_data()
 
     constraints = fetch_constraints()
     print("All constraints:")
     for constraint in constraints:
-        print(constraint)
+        print(constraint)"""
 
-    view_table('DictionaryPlaces')
     view_table('Places')
     view_table('Dictionaries')
 
-    places = get_places_for_dictionary(5)
+    places = get_places_for_dictionary(1)
     print(places)
