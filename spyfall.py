@@ -12,7 +12,8 @@ logging.basicConfig(
 
 logger = logging.getLogger(__name__)
 
-START_KEYBOARD = [[InlineKeyboardButton("Створити гру", callback_data='create_game')]]
+START_KEYBOARD = [[InlineKeyboardButton("Створити гру", callback_data='create_game')],
+                  [InlineKeyboardButton("Локації", callback_data='view_places')]]
 START_MARKUP = InlineKeyboardMarkup(START_KEYBOARD)
 
 
@@ -27,16 +28,24 @@ async def start(update: Update, context: CallbackContext) -> None:
                                    parse_mode=ParseMode.HTML)
 
 
+async def button(update: Update, context: CallbackContext) -> None:
+    query = update.callback_query
+    await query.answer()
+    user_id = query.from_user.id
+    name = query.from_user.first_name
+
+
 def main() -> None:
     print(f'Starting bot...')
 
-    with open('token.json', 'r') as f:
+    with open('credentials.json', 'r') as f:
         data = json.load(f)
 
     TOKEN = data["TOKEN"]
 
     application = Application.builder().token(TOKEN).build()
     application.add_handler(CommandHandler("start", start))
+    application.add_handler(CallbackQueryHandler(button))
 
     application.run_polling()
 
