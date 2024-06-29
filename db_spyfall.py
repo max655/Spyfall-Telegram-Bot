@@ -115,17 +115,26 @@ def get_places_for_dictionary(dictionary_id):
             LEFT JOIN Dictionaries d ON dp.dictionary_id = d.id
             WHERE d.id = %s
             ''', (dictionary_id,))
-            return cursor.fetchall()
+            result = cursor.fetchall()
+            return [row[0] for row in result]
 
 
-def view_table(table):
+def get_dictionary_name(dictionary_id):
+    with closing(connect_db()) as db:
+        with db as conn:
+            cursor = conn.cursor()
+            cursor.execute('SELECT name from Dictionaries WHERE id = %s', (dictionary_id,))
+            row = cursor.fetchone()
+            return row[0] if row else None
+
+
+def fetch_table(table):
     with closing(connect_db()) as db:
         with db as conn:
             cursor = conn.cursor()
             cursor.execute(f'SELECT * FROM {table}')
             rows = cursor.fetchall()
-            for row in rows:
-                print(row)
+            return rows
 
 
 def fetch_constraints():
@@ -186,8 +195,13 @@ if __name__ == "__main__":
     for constraint in constraints:
         print(constraint)"""
 
-    view_table('Places')
-    view_table('Dictionaries')
+    rows = fetch_table('Places')
+    for row in rows:
+        print(row)
+
+    rows = fetch_table('Dictionaries')
+    for row in rows:
+        print(row)
 
     places = get_places_for_dictionary(1)
     print(places)
