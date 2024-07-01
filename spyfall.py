@@ -13,7 +13,7 @@ logging.basicConfig(
 
 logger = logging.getLogger(__name__)
 
-START_KEYBOARD = [[InlineKeyboardButton("Створити гру", callback_data='create_game')],
+START_KEYBOARD = [[InlineKeyboardButton("Створити гру", callback_data='create_room')],
                   [InlineKeyboardButton("Локації", callback_data='view_locations')]]
 START_MARKUP = InlineKeyboardMarkup(START_KEYBOARD)
 
@@ -22,6 +22,8 @@ BACK_MARKUP = InlineKeyboardMarkup(BACK_KEYBOARD)
 
 user_states = {}
 user_messages = {}
+room = {}
+games = {}
 
 
 def track_user_message(user_id, message):
@@ -35,15 +37,32 @@ async def clear_previous_message(user_id, context):
 
 
 async def start(update: Update, context: CallbackContext) -> None:
+    args = context.args
     user_id = update.message.from_user.id
+    username = update.message.from_user.first_name
 
-    start_message = await context.bot.send_message(chat_id=user_id,
-                                                   text="Вітаємо вас у боті зі грою "
-                                                        "<b>Знахідка для шпигуна (Spyfall)</b>!\n"
-                                                        "Створіть гру, щоб запросити своїх друзів.",
-                                                   reply_markup=START_MARKUP,
-                                                   parse_mode=ParseMode.HTML)
-    track_user_message(user_id, start_message)
+    if len(args) == 0:
+        start_message = await context.bot.send_message(chat_id=user_id,
+                                                       text="Вітаємо вас у боті зі грою "
+                                                            "<b>Знахідка для шпигуна (Spyfall)</b>!\n"
+                                                            "Створіть гру, щоб запросити своїх друзів.",
+                                                       reply_markup=START_MARKUP,
+                                                       parse_mode=ParseMode.HTML)
+        track_user_message(user_id, start_message)
+        return
+
+    host_id = args[0]
+    if host_id != user_id:
+        room[user_id]['username'] = username
+        player_list = "\n".join(player['username'] for player in room.values())
+        start_message = await context.bot.send_message(chat_id=user_id,
+                                                       text='Ласкаво просимо до гри '
+                                                            '<b>Знахідка для шпигуна (Spyfall)</b>!\n'
+                                                            'Очікуйте початку гри.\n\n'
+                                                            'Гравці:\n'
+                                                            f'{player_list}')
+        games[user_id]['message_id'] = start_message.message_id
+        track_user_message(user_id, start_message)
 
 
 async def button(update: Update, context: CallbackContext) -> None:
@@ -51,7 +70,38 @@ async def button(update: Update, context: CallbackContext) -> None:
     await query.answer()
     user_id = query.from_user.id
 
-    if query.data == 'view_locations':
+    if query.data == 'create_room':
+        keyboard = [[InlineKeyboardButton('Створити', callback_data='create_game')],
+                    [InlineKeyboardButton('Назад', callback_data='go_back')]]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+
+        await query.edit_message_text(text='Для початку гри я згенерую посилання,'
+                                           ' по якому зможуть підключитися друзі.\n'
+                                           'Створити гру?', reply_markup=reply_markup)
+
+    elif query.data == 'create_game':
+        username = query.from_user.first_name
+        if user_id not in room:
+            room[user_id] = {'username': username}
+
+        keyboard = [[InlineKeyboardButton('Почати гру', callback_data='start_game')],
+                    [InlineKeyboardButton('Відмінити гру', callback_data='go_back')]]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+
+        link = f'https://t.me/spyfall11_bot?start={user_id}'
+
+        player_list = "\n".join(player['username'] for player in room.values())
+
+        message = await query.edit_message_text(text='Ваше посилання:\n'
+                                                     f'{link}\n'
+                                                     f'Після того, як всі зайдуть, натисніть <b>Почати</b>.\n\n'
+                                                     f'Гравці:\n'
+                                                     f'{player_list}',
+                                                parse_mode=ParseMode.HTML, reply_markup=reply_markup)
+
+        games[user_id]['message_id'] = message.message_id
+
+    elif query.data == 'view_locations':
         data = fetch_table('Dictionaries')
         message_text = 'Список всіх локацій:\n'
 
