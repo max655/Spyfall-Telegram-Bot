@@ -14,3 +14,8 @@ BACK_MARKUP = InlineKeyboardMarkup(BACK_KEYBOARD)
 
 EXIT_KEYBOARD = [[InlineKeyboardButton("Вийти", callback_data='exit_game')]]
 EXIT_MARKUP = InlineKeyboardMarkup(EXIT_KEYBOARD)
+
+PROCESS_GAME = [[InlineKeyboardButton('Почати гру', callback_data='start_game')],
+                [InlineKeyboardButton('Відмінити гру', callback_data='go_back')]]
+
+PROCESS_GAME_MARKUP = InlineKeyboardMarkup(PROCESS_GAME)

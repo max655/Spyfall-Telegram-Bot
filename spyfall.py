@@ -72,8 +72,7 @@ async def button(update: Update, context: CallbackContext) -> None:
                                                      f'{player_list}',
                                                 parse_mode=ParseMode.HTML, reply_markup=reply_markup)
 
-        games[user_id] = {}
-        games[user_id]['message_id'] = message.message_id
+        room[user_id]['message_id'] = message.message_id
 
     elif query.data == 'view_locations':
         data = fetch_table('Dictionaries')

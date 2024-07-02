@@ -33,6 +33,20 @@ async def join_game(user_id, username, context: CallbackContext):
                                                    parse_mode=ParseMode.HTML,
                                                    reply_markup=EXIT_MARKUP)
 
-    games[user_id] = {}
-    games[user_id]['message_id'] = start_message.message_id
+    room[user_id]['message_id'] = start_message.message_id
     track_user_message(user_id, start_message)
+
+
+async def update_messages(host_id, context: CallbackContext):
+    user_id_list = [user_id for user_id in room]
+    msg_id_list = [player['message_id'] for player in room.values()]
+    player_list = "\n".join(player['username'] for player in room.values())
+
+    for user_id, msg_id in zip(user_id_list, msg_id_list):
+        if user_id == host_id:
+            await context.bot.edit_message_text(chat_id=user_id, message_id=msg_id,
+                                                text=f'Після того, як всі зайдуть, натисніть <b>Почати</b>.\n\n'
+                                                     f'Гравці:\n'
+                                                     f'{player_list}',
+                                                )
+
