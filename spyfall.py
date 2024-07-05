@@ -199,6 +199,15 @@ async def button(update: Update, context: CallbackContext) -> None:
     elif query.data.startswith('deny_game_'):
         game_id = query.data.split('_')[-1]
 
+        user_id_list = [user_id for user_id in rooms[game_id]['players']]
+        msg_id_list = [player['message_id'] for player in rooms[game_id]['players'].values()]
+        host_id = rooms[game_id]['host_id']
+
+        keyboard = [[InlineKeyboardButton("Вийти", callback_data=f'exit_game_{game_id}')]]
+        exit_markup = InlineKeyboardMarkup(keyboard)
+
+        await update_messages(game_id, exit_markup, user_id_list, msg_id_list, host_id, context, deny_game=True)
+
         if game_id in rooms:
             del rooms[game_id]
             await clear_previous_message(user_id, context)
