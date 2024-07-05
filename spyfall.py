@@ -4,7 +4,7 @@ from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, MessageHandler, CallbackQueryHandler, CallbackContext, filters
 from telegram.constants import ParseMode
 from db_spyfall import fetch_table, get_dictionary_name, get_places_for_dictionary
-from common import user_states, user_messages, rooms, START_KEYBOARD, START_MARKUP, BACK_MARKUP, PROCESS_GAME_MARKUP
+from common import user_states, user_messages, rooms, START_KEYBOARD, START_MARKUP, BACK_MARKUP
 from functions import clear_previous_message, track_user_message, join_game, update_messages, generate_unique_game_id
 import copy
 
@@ -41,6 +41,11 @@ async def start(update: Update, context: CallbackContext) -> None:
     host_id = int(text[7:index_non_digit])
     game_id = text[index_non_digit+8:]
 
+    if game_id not in rooms:
+        await context.bot.send_message(chat_id=user_id,
+                                       text='Не існує гри з таким ідентифікатором.')
+        return
+
     if host_id != user_id:
         await join_game(user_id, game_id, host_id, username, context)
     else:
@@ -48,12 +53,16 @@ async def start(update: Update, context: CallbackContext) -> None:
         if user_id in user_messages:
             await clear_previous_message(user_id, context)
 
+        keyboard = [[InlineKeyboardButton('Почати гру', callback_data='start_game')],
+                    [InlineKeyboardButton('Відмінити гру', callback_data=f'deny_game_{game_id}')]]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+
         msg = await context.bot.send_message(chat_id=user_id,
                                              text=f'Після того, як всі зайдуть, натисніть <b>Почати</b>.\n\n'
                                                   f'Гравці:\n'
                                                   f'{player_list}',
                                              parse_mode=ParseMode.HTML,
-                                             reply_markup=PROCESS_GAME_MARKUP
+                                             reply_markup=reply_markup
                                              )
         track_user_message(user_id, msg)
         rooms[game_id]['players'][user_id]['message_id'] = msg.message_id
@@ -69,9 +78,10 @@ async def button(update: Update, context: CallbackContext) -> None:
                     [InlineKeyboardButton('Назад', callback_data='go_back')]]
         reply_markup = InlineKeyboardMarkup(keyboard)
 
-        await query.edit_message_text(text='Для початку гри я згенерую посилання,'
-                                           ' по якому зможуть підключитися друзі.\n'
-                                           'Створити гру?', reply_markup=reply_markup)
+        message = await query.edit_message_text(text='Для початку гри я згенерую посилання,'
+                                                     ' по якому зможуть підключитися друзі.\n'
+                                                     'Створити гру?', reply_markup=reply_markup)
+        track_user_message(user_id, message)
 
     elif query.data == 'create_game':
         username = query.from_user.first_name
@@ -88,22 +98,28 @@ async def button(update: Update, context: CallbackContext) -> None:
             rooms[game_id]['players'][user_id]['username'] = username
 
         keyboard = [[InlineKeyboardButton('Почати гру', callback_data='start_game')],
-                    [InlineKeyboardButton('Відмінити гру', callback_data='go_back')]]
+                    [InlineKeyboardButton('Відмінити гру', callback_data=f'deny_game_{game_id}')]]
         reply_markup = InlineKeyboardMarkup(keyboard)
 
         link = f'https://t.me/SpyFallGame11_bot?start={user_id}game_id={game_id}'
 
         player_list = "\n".join(player['username'] for player in rooms[game_id]['players'].values())
 
+        if user_id in user_messages:
+            await clear_previous_message(user_id, context)
+
         await context.bot.send_message(text='Ваше посилання:\n'
                                             f'{link}',
                                        chat_id=user_id)
-        message = await query.edit_message_text(text=f'Після того, як всі зайдуть, натисніть <b>Почати</b>.\n\n'
-                                                     f'Гравці:\n'
-                                                     f'{player_list}',
-                                                parse_mode=ParseMode.HTML, reply_markup=reply_markup)
+
+        message = await context.bot.send_message(text=f'Після того, як всі зайдуть, натисніть <b>Почати</b>.\n\n'
+                                                      f'Гравці:\n'
+                                                      f'{player_list}',
+                                                 parse_mode=ParseMode.HTML, reply_markup=reply_markup,
+                                                 chat_id=user_id)
 
         rooms[game_id]['players'][user_id]['message_id'] = message.message_id
+        track_user_message(user_id, message)
 
     elif query.data == 'view_locations':
         data = fetch_table('Dictionaries')
@@ -136,9 +152,9 @@ async def button(update: Update, context: CallbackContext) -> None:
         if user_id in user_states:
             del user_states[user_id]
 
-        reply_markup = update.effective_message.reply_markup
-        if reply_markup == BACK_MARKUP:
+        if user_id in user_messages:
             await clear_previous_message(user_id, context)
+
         msg = await context.bot.send_message(text='Ви повернулися до головного меню.',
                                              reply_markup=START_MARKUP, chat_id=user_id)
         track_user_message(user_id, msg)
@@ -179,6 +195,18 @@ async def button(update: Update, context: CallbackContext) -> None:
         username = query.from_user.first_name
 
         await join_game(user_id, game_id, host_id, username, context)
+
+    elif query.data.startswith('deny_game_'):
+        game_id = query.data.split('_')[-1]
+
+        if game_id in rooms:
+            del rooms[game_id]
+            await clear_previous_message(user_id, context)
+
+        msg = await context.bot.send_message(text='Ви успішно відмінили гру.',
+                                             reply_markup=START_MARKUP, chat_id=user_id)
+
+        track_user_message(user_id, msg)
 
 
 async def handle_message(update: Update, context: CallbackContext) -> None:

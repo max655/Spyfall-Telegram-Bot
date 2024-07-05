@@ -1,7 +1,7 @@
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, MessageHandler, CallbackQueryHandler, CallbackContext, filters
 from telegram.constants import ParseMode
-from common import user_messages, rooms, PROCESS_GAME_MARKUP
+from common import user_messages, rooms
 import secrets
 
 
@@ -54,12 +54,16 @@ async def update_messages(game_id, exit_markup, user_id_list, msg_id_list, host_
 
     for user_id, msg_id in zip(user_id_list, msg_id_list):
         if user_id == host_id:
+            keyboard = [[InlineKeyboardButton('Почати гру', callback_data='start_game')],
+                        [InlineKeyboardButton('Відмінити гру', callback_data=f'deny_game_{game_id}')]]
+            reply_markup = InlineKeyboardMarkup(keyboard)
+
             await context.bot.edit_message_text(chat_id=user_id, message_id=msg_id,
                                                 text=f'Після того, як всі зайдуть, натисніть <b>Почати</b>.\n\n'
                                                      f'Гравці:\n'
                                                      f'{player_list}',
                                                 parse_mode=ParseMode.HTML,
-                                                reply_markup=PROCESS_GAME_MARKUP
+                                                reply_markup=reply_markup
                                                 )
         else:
             await context.bot.edit_message_text(chat_id=user_id, message_id=msg_id,
