@@ -49,7 +49,8 @@ async def join_game(user_id, game_id, host_id, username, context: CallbackContex
     track_user_message(user_id, start_message)
 
 
-async def update_messages(game_id, exit_markup, user_id_list, msg_id_list, host_id, context: CallbackContext, deny_game=False):
+async def update_messages(game_id, exit_markup, user_id_list, msg_id_list, host_id, context: CallbackContext,
+                          deny_game=False):
     player_list = "\n".join(player['username'] for player in rooms[game_id]['players'].values())
     host_username = rooms[game_id]['players'][host_id]['username']
 
