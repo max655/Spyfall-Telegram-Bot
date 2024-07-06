@@ -106,7 +106,7 @@ async def default_update(host_id, exit_markup, game_id, player_list, user_id_lis
         if user_id == host_id:
             keyboard = [[InlineKeyboardButton('Почати гру', callback_data='start_game')],
                         [InlineKeyboardButton('Відмінити гру', callback_data=f'deny_game_{game_id}')],
-                        [InlineKeyboardButton('Вигнати гравця', callback_data=f'kick_player_{game_id}')]]
+                        [InlineKeyboardButton('Адмін-меню', callback_data=f'admin_menu_{game_id}')]]
             reply_markup = InlineKeyboardMarkup(keyboard)
 
             await context.bot.edit_message_text(chat_id=user_id, message_id=msg_id,

@@ -62,7 +62,7 @@ async def start(update: Update, context: CallbackContext) -> None:
 
         keyboard = [[InlineKeyboardButton('Почати гру', callback_data='start_game')],
                     [InlineKeyboardButton('Відмінити гру', callback_data=f'deny_game_{game_id}')],
-                    [InlineKeyboardButton('Вигнати гравця', callback_data=f'kick_player_{game_id}')]]
+                    [InlineKeyboardButton('Адмін-меню', callback_data=f'admin_menu_{game_id}')]]
         reply_markup = InlineKeyboardMarkup(keyboard)
 
         msg = await context.bot.send_message(chat_id=user_id,
@@ -107,7 +107,7 @@ async def button(update: Update, context: CallbackContext) -> None:
 
         keyboard = [[InlineKeyboardButton('Почати гру', callback_data='start_game')],
                     [InlineKeyboardButton('Відмінити гру', callback_data=f'deny_game_{game_id}')],
-                    [InlineKeyboardButton('Вигнати гравця', callback_data=f'kick_player_{game_id}')]]
+                    [InlineKeyboardButton('Адмін-меню', callback_data=f'admin_menu_{game_id}')]]
         reply_markup = InlineKeyboardMarkup(keyboard)
 
         link = f'https://t.me/SpyFallGame11_bot?start={user_id}game_id={game_id}'
@@ -234,11 +234,12 @@ async def button(update: Update, context: CallbackContext) -> None:
     elif query.data.startswith('kick_player_'):
         game_id = query.data.split('_')[-1]
         reply_markup = update.effective_message.reply_markup
+        text = update.effective_message.text
 
         if user_id not in user_states:
             user_states[user_id] = {}
 
-        keyboard = [[InlineKeyboardButton("Відміна", callback_data='back_to_game_state')]]
+        keyboard = [[InlineKeyboardButton("Відміна", callback_data='back_to_admin_menu')]]
         cancel_markup = InlineKeyboardMarkup(keyboard)
 
         await query.edit_message_text(text="Введіть ім'я гравця:",
@@ -246,7 +247,41 @@ async def button(update: Update, context: CallbackContext) -> None:
 
         user_states[user_id]['kick_player'] = True
         user_states[user_id]['game_id'] = game_id
+        user_states[user_id]['admin_markup'] = reply_markup
+        user_states[user_id]['admin_text'] = text
+
+    elif query.data == 'back_to_admin_menu':
+        reply_markup = user_states[user_id]['admin_markup']
+        text = user_states[user_id]['admin_text']
+
+        del user_states[user_id]['kick_player']
+        await query.edit_message_text(text=text, reply_markup=reply_markup)
+
+    elif query.data.startswith('admin_menu_'):
+        game_id = query.data.split('_')[-1]
+        reply_markup = update.effective_message.reply_markup
+        text = update.effective_message.text
+
+        admin_keyboard = [[InlineKeyboardButton('Вигнати гравця', callback_data=f'kick_player_{game_id}')],
+                          [InlineKeyboardButton('Заблокувати гравця', callback_data=f'ban_player_{game_id}')],
+                          [InlineKeyboardButton('Розблокувати гравця', callback_data=f'unban_player_{game_id}')],
+                          [InlineKeyboardButton('Назад', callback_data='back_to_room')]]
+        admin_markup = InlineKeyboardMarkup(admin_keyboard)
+
+        if user_id not in user_states:
+            user_states[user_id] = {}
+
         user_states[user_id]['reply_markup'] = reply_markup
+        user_states[user_id]['text'] = text
+
+        await query.edit_message_text(text='Адмін-меню:', reply_markup=admin_markup)
+
+    elif query.data == 'back_to_room':
+        reply_markup = user_states[user_id]['reply_markup']
+        text = user_states[user_id]['text']
+        text = text.replace('Почати', '<b>Почати</b>')
+    
+        await query.edit_message_text(text=text, reply_markup=reply_markup, parse_mode=ParseMode.HTML)
 
 
 async def handle_message(update: Update, context: CallbackContext) -> None:
