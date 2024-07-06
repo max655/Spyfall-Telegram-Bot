@@ -4,8 +4,10 @@ from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, MessageHandler, CallbackQueryHandler, CallbackContext, filters
 from telegram.constants import ParseMode
 from db_spyfall import fetch_table, get_dictionary_name, get_places_for_dictionary
-from common import user_states, user_messages, rooms, START_KEYBOARD, START_MARKUP, BACK_MARKUP
-from functions import clear_previous_message, track_user_message, join_game, update_messages, generate_unique_game_id, get_player_id_by_username
+from common import user_states, user_messages, rooms, START_KEYBOARD, START_MARKUP, BACK_MARKUP, games_ban_list
+from functions import (clear_previous_message, track_user_message, join_game, update_messages,
+                       generate_unique_game_id,
+                       get_player_id_by_username)
 import copy
 
 
@@ -41,6 +43,13 @@ async def start(update: Update, context: CallbackContext) -> None:
 
     host_id = int(text[7:index_non_digit])
     game_id = text[index_non_digit+8:]
+
+    if game_id in games_ban_list:
+        print(games_ban_list[game_id])
+        if username in games_ban_list[game_id]:
+            await context.bot.send_message(chat_id=user_id,
+                                           text='Вас заблоковано в цій грі.')
+            return
 
     if game_id not in rooms:
         await context.bot.send_message(chat_id=user_id,
@@ -242,11 +251,72 @@ async def button(update: Update, context: CallbackContext) -> None:
         keyboard = [[InlineKeyboardButton("Відміна", callback_data='back_to_admin_menu')]]
         cancel_markup = InlineKeyboardMarkup(keyboard)
 
-        await query.edit_message_text(text="Введіть ім'я гравця:",
+        player_list = "\n".join(player['username'] for player in rooms[game_id]['players'].values())
+
+        await query.edit_message_text(text="Список наявних гравців:\n"
+                                           f"{player_list}\n\n"
+                                           "Введіть ім'я гравця, якого хочете вигнати:",
                                       reply_markup=cancel_markup)
 
         user_states[user_id]['kick_player'] = True
         user_states[user_id]['game_id'] = game_id
+        user_states[user_id]['admin_markup'] = reply_markup
+        user_states[user_id]['admin_text'] = text
+
+    elif query.data.startswith('ban_player_'):
+        game_id = query.data.split('_')[-1]
+        reply_markup = update.effective_message.reply_markup
+        text = update.effective_message.text
+
+        if user_id not in user_states:
+            user_states[user_id] = {}
+
+        keyboard = [[InlineKeyboardButton("Відміна", callback_data='back_to_admin_menu')]]
+        cancel_markup = InlineKeyboardMarkup(keyboard)
+
+        player_list = "\n".join(player['username'] for player in rooms[game_id]['players'].values())
+
+        await query.edit_message_text(text="Список наявних гравців:\n"
+                                           f"{player_list}\n\n"
+                                           "Введіть ім'я гравця, якого хочете заблокувати:",
+                                      reply_markup=cancel_markup)
+
+        user_states[user_id]['kick_player'] = True
+        user_states[user_id]['ban_player'] = True
+        user_states[user_id]['game_id'] = game_id
+        user_states[user_id]['admin_markup'] = reply_markup
+        user_states[user_id]['admin_text'] = text
+
+    elif query.data.startswith('unban_player_'):
+        game_id = query.data.split('_')[-1]
+        reply_markup = update.effective_message.reply_markup
+        message_id = update.effective_message.message_id
+        text = update.effective_message.text
+
+        if user_id not in user_states:
+            user_states[user_id] = {}
+
+        keyboard = [[InlineKeyboardButton("Відміна", callback_data='back_to_admin_menu')]]
+        cancel_markup = InlineKeyboardMarkup(keyboard)
+
+        if game_id in games_ban_list:
+            ban_list = games_ban_list.get(game_id)
+            if ban_list:
+                banned_players = '\n'.join(ban_list)
+                await query.edit_message_text(text="Список заблокованих гравців:\n"
+                                                   f"{banned_players}\n\n"
+                                                   "Введіть ім'я гравця, якого хочете розблокувати:",
+                                              reply_markup=cancel_markup)
+            else:
+                await query.edit_message_text(text='Список заблокованих гравців пустий.',
+                                              reply_markup=reply_markup)
+        else:
+            await query.edit_message_text(text='Список заблокованих гравців пустий.',
+                                          reply_markup=reply_markup)
+
+        user_states[user_id]['unban_player'] = True
+        user_states[user_id]['game_id'] = game_id
+        user_states[user_id]['admin_msg_id'] = message_id
         user_states[user_id]['admin_markup'] = reply_markup
         user_states[user_id]['admin_text'] = text
 
@@ -280,7 +350,7 @@ async def button(update: Update, context: CallbackContext) -> None:
         reply_markup = user_states[user_id]['reply_markup']
         text = user_states[user_id]['text']
         text = text.replace('Почати', '<b>Почати</b>')
-    
+
         await query.edit_message_text(text=text, reply_markup=reply_markup, parse_mode=ParseMode.HTML)
 
 
@@ -333,12 +403,42 @@ async def handle_message(update: Update, context: CallbackContext) -> None:
             msg_id_list = [player['message_id'] for player in rooms[game_id]['players'].values()]
             host_id = rooms[game_id]['host_id']
 
-            await update_messages(game_id, exit_markup, user_id_list, msg_id_list, host_id, context,
-                                  kick_player=True,
-                                  kicked_player_id=player_id)
+            if user_states.get(user_id, {}).get('ban_player'):
+                await update_messages(game_id, exit_markup, user_id_list, msg_id_list, host_id, context,
+                                      kick_player=True,
+                                      kicked_player_id=player_id,
+                                      ban_player=True)
+            else:
+                await update_messages(game_id, exit_markup, user_id_list, msg_id_list, host_id, context,
+                                      kick_player=True,
+                                      kicked_player_id=player_id)
         else:
             await context.bot.send_message(chat_id=user_id,
                                            text='Немає гравця з таким іменем.')
+
+    elif user_states.get(user_id, {}).get('unban_player'):
+        game_id = user_states[user_id]['game_id']
+        player_name = update.message.text.strip()
+
+        text = user_states[user_id]['admin_text']
+        reply_markup = user_states[user_id]['admin_markup']
+        message_id = user_states[user_id]['admin_msg_id']
+
+        ban_list = games_ban_list.get(game_id)
+        if player_name in ban_list:
+            games_ban_list[game_id].remove(player_name)
+            del user_states[user_id]['unban_player']
+
+            await context.bot.send_message(chat_id=user_id,
+                                           text='Гравця розблоковано.')
+            await context.bot.edit_message_text(chat_id=user_id,
+                                                text=text,
+                                                message_id=message_id,
+                                                reply_markup=reply_markup)
+        else:
+            await context.bot.send_message(chat_id=user_id,
+                                           text='В списку немає такого гравця.')
+
     else:
         await context.bot.send_message(text='Неправильна команда.', chat_id=user_id)
 

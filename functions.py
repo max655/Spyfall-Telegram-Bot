@@ -1,7 +1,7 @@
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, MessageHandler, CallbackQueryHandler, CallbackContext, filters
 from telegram.constants import ParseMode
-from common import user_messages, rooms, START_MARKUP, user_states
+from common import user_messages, rooms, START_MARKUP, user_states, games_ban_list
 import secrets
 
 
@@ -58,7 +58,7 @@ async def join_game(user_id, game_id, host_id, username, context: CallbackContex
 
 
 async def update_messages(game_id, exit_markup, user_id_list, msg_id_list, host_id, context: CallbackContext,
-                          deny_game=False, kick_player=False, kicked_player_id=None):
+                          deny_game=False, kick_player=False, kicked_player_id=None, ban_player=False):
     player_list = "\n".join(player['username'] for player in rooms[game_id]['players'].values())
     host_username = rooms[game_id]['players'][host_id]['username']
 
@@ -75,10 +75,27 @@ async def update_messages(game_id, exit_markup, user_id_list, msg_id_list, host_
         if kicked_player_id != host_id:
             for user_id, msg_id in zip(user_id_list, msg_id_list):
                 if user_id == kicked_player_id:
+                    if ban_player:
+                        text = 'Вас заблокували у грі.'
+                        host_text = 'Гравця заблоковано.'
+
+                        if game_id not in games_ban_list:
+                            games_ban_list[game_id] = []
+
+                        kicked_player_name = rooms[game_id]['players'][kicked_player_id]['username']
+                        games_ban_list[game_id].append(kicked_player_name)
+                    else:
+                        text = 'Вас вигнали зі гри.'
+                        host_text = 'Гравця вигнано.'
+
+                    await context.bot.send_message(chat_id=host_id,
+                                                   text=host_text)
+
                     await context.bot.edit_message_text(chat_id=user_id,
                                                         message_id=msg_id,
-                                                        text=f'{host_username} вигнав вас зі гри.',
+                                                        text=text,
                                                         reply_markup=START_MARKUP)
+
                     del rooms[game_id]['players'][kicked_player_id]
 
             user_id_list = [user_id for user_id in rooms[game_id]['players']]
@@ -86,11 +103,15 @@ async def update_messages(game_id, exit_markup, user_id_list, msg_id_list, host_
             msg_id_list = [player['message_id'] for player in rooms[game_id]['players'].values()]
 
             await default_update(host_id, exit_markup, game_id, player_list, user_id_list, msg_id_list,
-                                 context, kick=True)
+                                 context, kick_player=kick_player, ban_player=ban_player)
             return
         else:
-            await context.bot.send_message(chat_id=host_id,
-                                           text='Ми не можете вигнати самого себе.')
+            if ban_player:
+                await context.bot.send_message(chat_id=host_id,
+                                               text='Ми не можете заблокувати самого себе.')
+            else:
+                await context.bot.send_message(chat_id=host_id,
+                                               text='Ми не можете вигнати самого себе.')
             return
 
     await default_update(host_id, exit_markup, game_id, player_list, user_id_list, msg_id_list,
@@ -98,9 +119,12 @@ async def update_messages(game_id, exit_markup, user_id_list, msg_id_list, host_
 
 
 async def default_update(host_id, exit_markup, game_id, player_list, user_id_list, msg_id_list,
-                         context: CallbackContext, kick=False):
-    if kick:
+                         context: CallbackContext, kick_player=False, ban_player=False):
+    if kick_player:
         del user_states[host_id]['kick_player']
+
+    if ban_player:
+        del user_states[host_id]['ban_player']
 
     for user_id, msg_id in zip(user_id_list, msg_id_list):
         if user_id == host_id:
