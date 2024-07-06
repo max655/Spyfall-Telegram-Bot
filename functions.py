@@ -1,7 +1,7 @@
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, MessageHandler, CallbackQueryHandler, CallbackContext, filters
 from telegram.constants import ParseMode
-from common import user_messages, rooms, START_MARKUP
+from common import user_messages, rooms, START_MARKUP, user_states
 import secrets
 
 
@@ -9,6 +9,14 @@ def generate_unique_game_id():
     digits = [str(i) for i in range(10)]
     player_id = ''.join(secrets.choice(digits) for _ in range(6))
     return player_id
+
+
+def get_player_id_by_username(game_id, username):
+    players = rooms.get(game_id, {}).get('players', {})
+    for player_id, player_data in players.items():
+        if player_data.get("username") == username:
+            return int(player_id)
+    return None
 
 
 def track_user_message(user_id, message):
@@ -50,7 +58,7 @@ async def join_game(user_id, game_id, host_id, username, context: CallbackContex
 
 
 async def update_messages(game_id, exit_markup, user_id_list, msg_id_list, host_id, context: CallbackContext,
-                          deny_game=False):
+                          deny_game=False, kick_player=False, kicked_player_id=None):
     player_list = "\n".join(player['username'] for player in rooms[game_id]['players'].values())
     host_username = rooms[game_id]['players'][host_id]['username']
 
@@ -63,10 +71,42 @@ async def update_messages(game_id, exit_markup, user_id_list, msg_id_list, host_
                                                     reply_markup=START_MARKUP)
         return
 
+    if kick_player:
+        if kicked_player_id != host_id:
+            for user_id, msg_id in zip(user_id_list, msg_id_list):
+                if user_id == kicked_player_id:
+                    await context.bot.edit_message_text(chat_id=user_id,
+                                                        message_id=msg_id,
+                                                        text=f'{host_username} вигнав вас зі гри.',
+                                                        reply_markup=START_MARKUP)
+                    del rooms[game_id]['players'][kicked_player_id]
+
+            user_id_list = [user_id for user_id in rooms[game_id]['players']]
+            player_list = "\n".join(player['username'] for player in rooms[game_id]['players'].values())
+            msg_id_list = [player['message_id'] for player in rooms[game_id]['players'].values()]
+
+            await default_update(host_id, exit_markup, game_id, player_list, user_id_list, msg_id_list,
+                                 context, kick=True)
+            return
+        else:
+            await context.bot.send_message(chat_id=host_id,
+                                           text='Ми не можете вигнати самого себе.')
+            return
+
+    await default_update(host_id, exit_markup, game_id, player_list, user_id_list, msg_id_list,
+                         context)
+
+
+async def default_update(host_id, exit_markup, game_id, player_list, user_id_list, msg_id_list,
+                         context: CallbackContext, kick=False):
+    if kick:
+        del user_states[host_id]['kick_player']
+
     for user_id, msg_id in zip(user_id_list, msg_id_list):
         if user_id == host_id:
             keyboard = [[InlineKeyboardButton('Почати гру', callback_data='start_game')],
-                        [InlineKeyboardButton('Відмінити гру', callback_data=f'deny_game_{game_id}')]]
+                        [InlineKeyboardButton('Відмінити гру', callback_data=f'deny_game_{game_id}')],
+                        [InlineKeyboardButton('Вигнати гравця', callback_data=f'kick_player_{game_id}')]]
             reply_markup = InlineKeyboardMarkup(keyboard)
 
             await context.bot.edit_message_text(chat_id=user_id, message_id=msg_id,

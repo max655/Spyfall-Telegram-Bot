@@ -5,7 +5,7 @@ from telegram.ext import Application, CommandHandler, MessageHandler, CallbackQu
 from telegram.constants import ParseMode
 from db_spyfall import fetch_table, get_dictionary_name, get_places_for_dictionary
 from common import user_states, user_messages, rooms, START_KEYBOARD, START_MARKUP, BACK_MARKUP
-from functions import clear_previous_message, track_user_message, join_game, update_messages, generate_unique_game_id
+from functions import clear_previous_message, track_user_message, join_game, update_messages, generate_unique_game_id, get_player_id_by_username
 import copy
 
 
@@ -32,6 +32,7 @@ async def start(update: Update, context: CallbackContext) -> None:
                                                            reply_markup=START_MARKUP,
                                                            parse_mode=ParseMode.HTML)
             track_user_message(user_id, start_message)
+            user_states[user_id] = {}
         else:
             await context.bot.send_message(chat_id=user_id, text='Вийдіть зі гри, якщо хочете почати спочатку.')
         return
@@ -47,14 +48,21 @@ async def start(update: Update, context: CallbackContext) -> None:
         return
 
     if host_id != user_id:
+        if user_id not in user_states:
+            user_states[user_id] = {}
+
         await join_game(user_id, game_id, host_id, username, context)
     else:
         player_list = "\n".join(player['username'] for player in rooms[game_id]['players'].values())
         if user_id in user_messages:
             await clear_previous_message(user_id, context)
 
+        if user_id not in user_states:
+            user_states[user_id] = {}
+
         keyboard = [[InlineKeyboardButton('Почати гру', callback_data='start_game')],
-                    [InlineKeyboardButton('Відмінити гру', callback_data=f'deny_game_{game_id}')]]
+                    [InlineKeyboardButton('Відмінити гру', callback_data=f'deny_game_{game_id}')],
+                    [InlineKeyboardButton('Вигнати гравця', callback_data=f'kick_player_{game_id}')]]
         reply_markup = InlineKeyboardMarkup(keyboard)
 
         msg = await context.bot.send_message(chat_id=user_id,
@@ -98,7 +106,8 @@ async def button(update: Update, context: CallbackContext) -> None:
             rooms[game_id]['players'][user_id]['username'] = username
 
         keyboard = [[InlineKeyboardButton('Почати гру', callback_data='start_game')],
-                    [InlineKeyboardButton('Відмінити гру', callback_data=f'deny_game_{game_id}')]]
+                    [InlineKeyboardButton('Відмінити гру', callback_data=f'deny_game_{game_id}')],
+                    [InlineKeyboardButton('Вигнати гравця', callback_data=f'kick_player_{game_id}')]]
         reply_markup = InlineKeyboardMarkup(keyboard)
 
         link = f'https://t.me/SpyFallGame11_bot?start={user_id}game_id={game_id}'
@@ -146,7 +155,11 @@ async def button(update: Update, context: CallbackContext) -> None:
         msg = await context.bot.send_message(text=f'{message_text}Введіть номер локації:', chat_id=user_id,
                                              reply_markup=BACK_MARKUP)
         track_user_message(user_id, msg)
-        user_states[user_id] = True
+
+        if user_id not in user_states:
+            user_states[user_id] = {}
+
+        user_states[user_id]['view_places'] = True
 
     elif query.data == 'go_back':
         if user_id in user_states:
@@ -206,7 +219,8 @@ async def button(update: Update, context: CallbackContext) -> None:
         keyboard = [[InlineKeyboardButton("Вийти", callback_data=f'exit_game_{game_id}')]]
         exit_markup = InlineKeyboardMarkup(keyboard)
 
-        await update_messages(game_id, exit_markup, user_id_list, msg_id_list, host_id, context, deny_game=True)
+        await update_messages(game_id, exit_markup, user_id_list, msg_id_list, host_id, context,
+                              deny_game=True)
 
         if game_id in rooms:
             del rooms[game_id]
@@ -217,11 +231,28 @@ async def button(update: Update, context: CallbackContext) -> None:
 
         track_user_message(user_id, msg)
 
+    elif query.data.startswith('kick_player_'):
+        game_id = query.data.split('_')[-1]
+        reply_markup = update.effective_message.reply_markup
+
+        if user_id not in user_states:
+            user_states[user_id] = {}
+
+        keyboard = [[InlineKeyboardButton("Відміна", callback_data='back_to_game_state')]]
+        cancel_markup = InlineKeyboardMarkup(keyboard)
+
+        await query.edit_message_text(text="Введіть ім'я гравця:",
+                                      reply_markup=cancel_markup)
+
+        user_states[user_id]['kick_player'] = True
+        user_states[user_id]['game_id'] = game_id
+        user_states[user_id]['reply_markup'] = reply_markup
+
 
 async def handle_message(update: Update, context: CallbackContext) -> None:
     user_id = update.message.from_user.id
 
-    if user_states.get(user_id):
+    if user_states.get(user_id, {}).get('view_places'):
         dictionary_id = update.message.text.strip()
 
         data = fetch_table('Dictionaries')
@@ -253,6 +284,26 @@ async def handle_message(update: Update, context: CallbackContext) -> None:
         else:
             await context.bot.send_message(text=f'Невірний номер. Напишіть номер від 1 до {numbers[-1]}.',
                                            chat_id=user_id)
+
+    elif user_states.get(user_id, {}).get('kick_player'):
+        game_id = user_states[user_id]['game_id']
+        player_name = update.message.text.strip()
+        player_id = get_player_id_by_username(game_id, player_name)
+
+        if player_id:
+            keyboard = [[InlineKeyboardButton("Вийти", callback_data=f'exit_game_{game_id}')]]
+            exit_markup = InlineKeyboardMarkup(keyboard)
+
+            user_id_list = [user_id for user_id in rooms[game_id]['players']]
+            msg_id_list = [player['message_id'] for player in rooms[game_id]['players'].values()]
+            host_id = rooms[game_id]['host_id']
+
+            await update_messages(game_id, exit_markup, user_id_list, msg_id_list, host_id, context,
+                                  kick_player=True,
+                                  kicked_player_id=player_id)
+        else:
+            await context.bot.send_message(chat_id=user_id,
+                                           text='Немає гравця з таким іменем.')
     else:
         await context.bot.send_message(text='Неправильна команда.', chat_id=user_id)
 
