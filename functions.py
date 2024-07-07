@@ -28,6 +28,13 @@ def get_player_id_by_username(game_id, username):
     return None
 
 
+def find_game_id_with_user(user_id):
+    for game_id, room in rooms.items():
+        if user_id in room.get('players', []):
+            return game_id
+    return None
+
+
 def track_user_message(user_id, message):
     if user_id not in user_messages:
         user_messages[user_id] = []

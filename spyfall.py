@@ -7,7 +7,8 @@ from db_spyfall import fetch_table, get_dictionary_name, get_places_for_dictiona
 from common import (user_states, user_messages, rooms, START_KEYBOARD, START_MARKUP, BACK_MARKUP, games_ban_list,
                     start_messages)
 from functions import (clear_previous_message, track_user_message, join_game, update_messages,
-                       generate_unique_game_id, get_player_id_by_username, back_to_admin_menu)
+                       generate_unique_game_id, get_player_id_by_username, back_to_admin_menu,
+                       find_game_id_with_user)
 import copy
 
 
@@ -43,7 +44,12 @@ async def start(update: Update, context: CallbackContext) -> None:
             start_messages[user_id] = []
             start_messages[user_id].append(start_message.message_id)
         else:
-            await context.bot.send_message(chat_id=user_id, text='Вийдіть зі гри, якщо хочете почати спочатку.')
+            game_id = find_game_id_with_user(user_id)
+            keyboard = [[InlineKeyboardButton("Вийти", callback_data=f'deny_game_{game_id}')]]
+            exit_markup = InlineKeyboardMarkup(keyboard)
+            msg = await context.bot.send_message(chat_id=user_id, text='Вийдіть зі гри, якщо хочете почати спочатку.',
+                                                 reply_markup=exit_markup)
+            track_user_message(user_id, msg)
         return
 
     index_non_digit = text.index('g')
@@ -266,16 +272,22 @@ async def button(update: Update, context: CallbackContext) -> None:
                               deny_game=True)
 
         if game_id in rooms:
-            del rooms[game_id]
             await clear_previous_message(user_id, context)
+
             if 'admin_msg_id' in user_states[user_id]:
                 await context.bot.delete_message(chat_id=user_id,
                                                  message_id=user_states[user_id]['admin_msg_id'])
 
-        msg = await context.bot.send_message(text='Ви успішно відмінили гру.',
-                                             reply_markup=START_MARKUP, chat_id=user_id)
+            if 'message_id' in rooms[game_id]['players'][user_id]:
+                await context.bot.delete_message(chat_id=user_id,
+                                                 message_id=rooms[game_id]['players'][user_id]['message_id'])
 
-        track_user_message(user_id, msg)
+            del rooms[game_id]
+
+            msg = await context.bot.send_message(text='Ви успішно відмінили гру.',
+                                                 reply_markup=START_MARKUP, chat_id=user_id)
+
+            track_user_message(user_id, msg)
 
     elif query.data.startswith('kick_player_'):
         game_id = query.data.split('_')[-1]
