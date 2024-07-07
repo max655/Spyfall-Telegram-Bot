@@ -4,7 +4,8 @@ from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, MessageHandler, CallbackQueryHandler, CallbackContext, filters
 from telegram.constants import ParseMode
 from db_spyfall import fetch_table, get_dictionary_name, get_places_for_dictionary
-from common import user_states, user_messages, rooms, START_KEYBOARD, START_MARKUP, BACK_MARKUP, games_ban_list
+from common import (user_states, user_messages, rooms, START_KEYBOARD, START_MARKUP, BACK_MARKUP, games_ban_list,
+                    start_messages)
 from functions import (clear_previous_message, track_user_message, join_game, update_messages,
                        generate_unique_game_id, get_player_id_by_username, back_to_admin_menu)
 import copy
@@ -26,6 +27,11 @@ async def start(update: Update, context: CallbackContext) -> None:
 
     if len(args) == 0:
         if not (any(user_id in room['players'] for room in rooms.values())):
+
+            if user_id in start_messages:
+                await context.bot.delete_message(message_id=start_messages[user_id][0],
+                                                 chat_id=user_id)
+
             start_message = await context.bot.send_message(chat_id=user_id,
                                                            text="Вітаємо вас у боті зі грою "
                                                                 "<b>Знахідка для шпигуна (Spyfall)</b>!\n"
@@ -34,6 +40,8 @@ async def start(update: Update, context: CallbackContext) -> None:
                                                            parse_mode=ParseMode.HTML)
             track_user_message(user_id, start_message)
             user_states[user_id] = {}
+            start_messages[user_id] = []
+            start_messages[user_id].append(start_message.message_id)
         else:
             await context.bot.send_message(chat_id=user_id, text='Вийдіть зі гри, якщо хочете почати спочатку.')
         return
@@ -44,7 +52,6 @@ async def start(update: Update, context: CallbackContext) -> None:
     game_id = text[index_non_digit+8:]
 
     if game_id in games_ban_list:
-        print(games_ban_list[game_id])
         if username in games_ban_list[game_id]:
             await context.bot.send_message(chat_id=user_id,
                                            text='Вас заблоковано в цій грі.')
@@ -97,9 +104,20 @@ async def button(update: Update, context: CallbackContext) -> None:
         message = await query.edit_message_text(text='Для початку гри я згенерую посилання,'
                                                      ' по якому зможуть підключитися друзі.\n'
                                                      'Створити гру?', reply_markup=reply_markup)
-        track_user_message(user_id, message)
+
+        if not (any(user_id in room['players'] for room in rooms.values())):
+            track_user_message(user_id, message)
 
     elif query.data == 'create_game':
+        if rooms:
+            if any(user_id in room['players'] for room in rooms.values()):
+                await context.bot.send_message(chat_id=user_id,
+                                               text='Ви вже знаходитесь у грі.')
+                return
+
+        if user_id not in user_states:
+            user_states[user_id] = {}
+
         username = query.from_user.first_name
 
         game_id = generate_unique_game_id()
@@ -170,6 +188,9 @@ async def button(update: Update, context: CallbackContext) -> None:
         user_states[user_id]['view_places'] = True
 
     elif query.data == 'go_back':
+        if any(user_id in room['players'] for room in rooms.values()):
+            return
+        
         if user_id in user_states:
             del user_states[user_id]
 
