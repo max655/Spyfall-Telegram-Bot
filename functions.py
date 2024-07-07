@@ -41,7 +41,7 @@ def track_user_message(user_id, message):
     user_messages[user_id].append(message.message_id)
 
 
-async def clear_previous_message(user_id, context):
+async def clear_previous_message(user_id, context: CallbackContext, update: Update, text=None):
     await context.bot.delete_message(chat_id=user_id, message_id=user_messages[user_id][-1])
 
 

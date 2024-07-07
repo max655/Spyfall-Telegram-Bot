@@ -1,6 +1,7 @@
 import logging
 import json
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.error import BadRequest
 from telegram.ext import Application, CommandHandler, MessageHandler, CallbackQueryHandler, CallbackContext, filters
 from telegram.constants import ParseMode
 from db_spyfall import fetch_table, get_dictionary_name, get_places_for_dictionary
@@ -54,9 +55,21 @@ async def start(update: Update, context: CallbackContext) -> None:
 
             keyboard = [[InlineKeyboardButton("Вийти", callback_data=callback_data)]]
             exit_markup = InlineKeyboardMarkup(keyboard)
-            msg = await context.bot.send_message(chat_id=user_id, text='Вийдіть зі гри, якщо хочете почати спочатку.',
+
+            text = 'Вийдіть зі гри, якщо хочете почати спочатку.'
+
+            if user_id in user_messages:
+                try:
+                    if 'exit_markup' in user_states[user_id]:
+                        await clear_previous_message(user_id, context, update, text=text)
+                except BadRequest:
+                    pass
+
+            msg = await context.bot.send_message(chat_id=user_id, text=text,
                                                  reply_markup=exit_markup)
             track_user_message(user_id, msg)
+            user_states[user_id]['exit_markup'] = exit_markup
+
         return
 
     index_non_digit = text.index('g')
@@ -110,7 +123,7 @@ async def start(update: Update, context: CallbackContext) -> None:
     else:
         player_list = "\n".join(player['username'] for player in rooms[game_id]['players'].values())
         if user_id in user_messages:
-            await clear_previous_message(user_id, context)
+            await clear_previous_message(user_id, context, update)
 
         if user_id not in user_states:
             user_states[user_id] = {}
@@ -181,7 +194,7 @@ async def button(update: Update, context: CallbackContext) -> None:
         player_list = "\n".join(player['username'] for player in rooms[game_id]['players'].values())
 
         if user_id in user_messages:
-            await clear_previous_message(user_id, context)
+            await clear_previous_message(user_id, context, update)
 
         await context.bot.send_message(text='Ваше посилання:\n'
                                             f'{link}',
@@ -216,7 +229,7 @@ async def button(update: Update, context: CallbackContext) -> None:
             message_text += f'{dict_id}. {name}\n'
 
         if user_id in user_messages:
-            await clear_previous_message(user_id, context)
+            await clear_previous_message(user_id, context, update)
 
         msg = await context.bot.send_message(text=f'{message_text}Введіть номер локації:', chat_id=user_id,
                                              reply_markup=BACK_MARKUP)
@@ -240,7 +253,7 @@ async def button(update: Update, context: CallbackContext) -> None:
             del user_states[user_id]
 
         if user_id in user_messages:
-            await clear_previous_message(user_id, context)
+            await clear_previous_message(user_id, context, update)
 
         msg = await context.bot.send_message(text='Ви повернулися до головного меню.',
                                              reply_markup=START_MARKUP, chat_id=user_id)
@@ -259,13 +272,16 @@ async def button(update: Update, context: CallbackContext) -> None:
         game_id = query.data.split('_')[-1]
 
         if user_id in user_messages:
-            await clear_previous_message(user_id, context)
+            await clear_previous_message(user_id, context, update)
+
+        if 'exit_markup' in user_states[user_id]:
+            del user_states[user_id]['exit_markup']
 
         if 'message_id' in rooms[game_id]['players'][user_id]:
             try:
                 await context.bot.delete_message(chat_id=user_id,
                                                  message_id=rooms[game_id]['players'][user_id]['message_id'])
-            except Exception:
+            except BadRequest:
                 pass
 
         if user_id in rooms[game_id]['players']:
@@ -321,11 +337,14 @@ async def button(update: Update, context: CallbackContext) -> None:
                               deny_game=True)
 
         if game_id in rooms:
-            await clear_previous_message(user_id, context)
+            await clear_previous_message(user_id, context, update)
 
             if 'admin_msg_id' in user_states[user_id]:
                 await context.bot.delete_message(chat_id=user_id,
                                                  message_id=user_states[user_id]['admin_msg_id'])
+
+            if 'exit_markup' in user_states[user_id]:
+                del user_states[user_id]['exit_markup']
 
             if 'message_id' in rooms[game_id]['players'][user_id]:
                 await context.bot.delete_message(chat_id=user_id,
