@@ -340,15 +340,22 @@ async def button(update: Update, context: CallbackContext) -> None:
             await clear_previous_message(user_id, context, update)
 
             if 'admin_msg_id' in user_states[user_id]:
-                await context.bot.delete_message(chat_id=user_id,
-                                                 message_id=user_states[user_id]['admin_msg_id'])
+                try:
+                    await context.bot.delete_message(chat_id=user_id,
+                                                     message_id=user_states[user_id]['admin_msg_id'])
+                    del user_states[user_id]['admin_msg_id']
+                except BadRequest:
+                    pass
 
             if 'exit_markup' in user_states[user_id]:
                 del user_states[user_id]['exit_markup']
 
             if 'message_id' in rooms[game_id]['players'][user_id]:
-                await context.bot.delete_message(chat_id=user_id,
-                                                 message_id=rooms[game_id]['players'][user_id]['message_id'])
+                try:
+                    await context.bot.delete_message(chat_id=user_id,
+                                                     message_id=rooms[game_id]['players'][user_id]['message_id'])
+                except BadRequest:
+                    pass
 
             del rooms[game_id]
 
