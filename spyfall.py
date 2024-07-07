@@ -45,7 +45,13 @@ async def start(update: Update, context: CallbackContext) -> None:
             start_messages[user_id].append(start_message.message_id)
         else:
             game_id = find_game_id_with_user(user_id)
-            keyboard = [[InlineKeyboardButton("Вийти", callback_data=f'deny_game_{game_id}')]]
+            host_id = rooms[game_id]['host_id']
+            
+            if user_id == host_id:
+                keyboard = [[InlineKeyboardButton("Вийти", callback_data=f'deny_game_{game_id}')]]
+            else:
+                keyboard = [[InlineKeyboardButton("Вийти", callback_data=f'exit_game_{game_id}')]]
+
             exit_markup = InlineKeyboardMarkup(keyboard)
             msg = await context.bot.send_message(chat_id=user_id, text='Вийдіть зі гри, якщо хочете почати спочатку.',
                                                  reply_markup=exit_markup)
@@ -248,6 +254,14 @@ async def button(update: Update, context: CallbackContext) -> None:
 
         msg = await context.bot.send_message(text='Ви повернулися до головного меню.',
                                              reply_markup=reply_markup, chat_id=user_id)
+
+        if user_id not in start_messages:
+            start_messages[user_id] = []
+
+        if user_id in start_messages:
+            start_messages[user_id] = []
+
+        start_messages[user_id].append(msg.message_id)
         track_user_message(user_id, msg)
 
     elif query.data.startswith('return_to_game_'):
@@ -286,7 +300,13 @@ async def button(update: Update, context: CallbackContext) -> None:
 
             msg = await context.bot.send_message(text='Ви успішно відмінили гру.',
                                                  reply_markup=START_MARKUP, chat_id=user_id)
+            if user_id not in start_messages:
+                start_messages[user_id] = []
 
+            if user_id in start_messages:
+                start_messages[user_id] = []
+
+            start_messages[user_id].append(msg.message_id)
             track_user_message(user_id, msg)
 
     elif query.data.startswith('kick_player_'):
