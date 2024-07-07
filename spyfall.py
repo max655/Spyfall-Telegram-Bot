@@ -48,10 +48,11 @@ async def start(update: Update, context: CallbackContext) -> None:
             host_id = rooms[game_id]['host_id']
 
             if user_id == host_id:
-                keyboard = [[InlineKeyboardButton("Вийти", callback_data=f'deny_game_{game_id}')]]
+                callback_data = f'deny_game_{game_id}'
             else:
-                keyboard = [[InlineKeyboardButton("Вийти", callback_data=f'exit_game_{game_id}')]]
+                callback_data = f'exit_game_{game_id}'
 
+            keyboard = [[InlineKeyboardButton("Вийти", callback_data=callback_data)]]
             exit_markup = InlineKeyboardMarkup(keyboard)
             msg = await context.bot.send_message(chat_id=user_id, text='Вийдіть зі гри, якщо хочете почати спочатку.',
                                                  reply_markup=exit_markup)
@@ -68,6 +69,33 @@ async def start(update: Update, context: CallbackContext) -> None:
             await context.bot.send_message(chat_id=user_id,
                                            text='Вас заблоковано в цій грі.')
             return
+
+    room_with_user = None
+    game_with_user = None
+
+    for game_id, room in rooms.items():
+        if user_id in room['players']:
+            room_with_user = room
+            game_with_user = game_id
+
+    if room_with_user:
+        game_host_id = room_with_user['host_id']
+        user_game_id = game_with_user
+
+        if user_id == game_host_id:
+            callback_data = f'deny_game_{user_game_id}'
+        else:
+            callback_data = f'exit_game_{user_game_id}'
+
+        keyboard = [[InlineKeyboardButton("Вийти", callback_data=callback_data)]]
+        exit_markup = InlineKeyboardMarkup(keyboard)
+
+        msg = await context.bot.send_message(chat_id=user_id,
+                                             text='Ви вже знаходитесь у грі. '
+                                                  'Вийдіть з наявної гри, щоб перейти в іншу гру.',
+                                             reply_markup=exit_markup)
+        track_user_message(user_id, msg)
+        return
 
     if game_id not in rooms:
         await context.bot.send_message(chat_id=user_id,
@@ -230,11 +258,18 @@ async def button(update: Update, context: CallbackContext) -> None:
     elif query.data.startswith('exit_game_'):
         game_id = query.data.split('_')[-1]
 
-        if user_id in rooms[game_id]['players']:
-            del rooms[game_id]['players'][user_id]
-
         if user_id in user_messages:
             await clear_previous_message(user_id, context)
+
+        if 'message_id' in rooms[game_id]['players'][user_id]:
+            try:
+                await context.bot.delete_message(chat_id=user_id,
+                                                 message_id=rooms[game_id]['players'][user_id]['message_id'])
+            except Exception:
+                pass
+
+        if user_id in rooms[game_id]['players']:
+            del rooms[game_id]['players'][user_id]
 
         user_id_list = [user_id for user_id in rooms[game_id]['players']]
         msg_id_list = [player['message_id'] for player in rooms[game_id]['players'].values()]
