@@ -46,7 +46,7 @@ async def start(update: Update, context: CallbackContext) -> None:
         else:
             game_id = find_game_id_with_user(user_id)
             host_id = rooms[game_id]['host_id']
-            
+
             if user_id == host_id:
                 keyboard = [[InlineKeyboardButton("Вийти", callback_data=f'deny_game_{game_id}')]]
             else:
