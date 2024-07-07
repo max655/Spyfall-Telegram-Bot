@@ -11,6 +11,15 @@ def generate_unique_game_id():
     return player_id
 
 
+def get_unique_username(base_username, existing_usernames):
+    count = 1
+    new_username = base_username
+    while new_username in existing_usernames:
+        new_username = f"{base_username}({count})"
+        count += 1
+    return new_username
+
+
 def get_player_id_by_username(game_id, username):
     players = rooms.get(game_id, {}).get('players', {})
     for player_id, player_data in players.items():
@@ -32,8 +41,10 @@ async def clear_previous_message(user_id, context):
 async def join_game(user_id, game_id, host_id, username, context: CallbackContext):
     user_id_list = [user_id for user_id in rooms[game_id]['players']]
     msg_id_list = [player['message_id'] for player in rooms[game_id]['players'].values()]
+    username_list = [player['username'] for player in rooms[game_id]['players'].values()]
 
-    rooms[game_id]['players'][user_id] = {'username': username}
+    unique_username = get_unique_username(username, username_list)
+    rooms[game_id]['players'][user_id] = {'username': unique_username}
 
     player_list = "\n".join(player['username'] for player in rooms[game_id]['players'].values())
 
@@ -58,7 +69,7 @@ async def join_game(user_id, game_id, host_id, username, context: CallbackContex
 
 
 async def update_messages(game_id, exit_markup, user_id_list, msg_id_list, host_id, context: CallbackContext,
-                          deny_game=False, kick_player=False, kicked_player_id=None, ban_player=False):
+                          deny_game=False, kick_player=False, kicked_player_id=None, ban_player=False, interact=False):
     player_list = "\n".join(player['username'] for player in rooms[game_id]['players'].values())
     host_username = rooms[game_id]['players'][host_id]['username']
 
@@ -103,7 +114,9 @@ async def update_messages(game_id, exit_markup, user_id_list, msg_id_list, host_
             msg_id_list = [player['message_id'] for player in rooms[game_id]['players'].values()]
 
             await default_update(host_id, exit_markup, game_id, player_list, user_id_list, msg_id_list,
-                                 context, kick_player=kick_player, ban_player=ban_player)
+                                 context, interact=interact)
+
+            await back_to_admin_menu(host_id, context, interact=interact)
             return
         else:
             if ban_player:
@@ -119,12 +132,7 @@ async def update_messages(game_id, exit_markup, user_id_list, msg_id_list, host_
 
 
 async def default_update(host_id, exit_markup, game_id, player_list, user_id_list, msg_id_list,
-                         context: CallbackContext, kick_player=False, ban_player=False):
-    if kick_player:
-        del user_states[host_id]['kick_player']
-
-    if ban_player:
-        del user_states[host_id]['ban_player']
+                         context: CallbackContext, interact=False):
 
     for user_id, msg_id in zip(user_id_list, msg_id_list):
         if user_id == host_id:
@@ -133,13 +141,27 @@ async def default_update(host_id, exit_markup, game_id, player_list, user_id_lis
                         [InlineKeyboardButton('Адмін-меню', callback_data=f'admin_menu_{game_id}')]]
             reply_markup = InlineKeyboardMarkup(keyboard)
 
-            await context.bot.edit_message_text(chat_id=user_id, message_id=msg_id,
-                                                text=f'Після того, як всі зайдуть, натисніть <b>Почати</b>.\n\n'
-                                                     f'Гравці:\n'
-                                                     f'{player_list}',
-                                                parse_mode=ParseMode.HTML,
-                                                reply_markup=reply_markup
-                                                )
+            if interact:
+                await context.bot.delete_message(chat_id=user_id, message_id=msg_id)
+                msg = await context.bot.send_message(chat_id=user_id,
+                                                     text=f'Після того, як всі зайдуть, натисніть <b>Почати</b>.\n\n'
+                                                          f'Гравці:\n'
+                                                          f'{player_list}',
+                                                     parse_mode=ParseMode.HTML,
+                                                     reply_markup=reply_markup
+                                                     )
+                rooms[game_id]['players'][user_id]['message_id'] = msg.message_id
+                track_user_message(user_id, msg)
+            else:
+                msg = await context.bot.edit_message_text(chat_id=user_id, message_id=msg_id,
+                                                          text=f'Після того, як всі зайдуть, '
+                                                               f'натисніть <b>Почати</b>.\n\n'
+                                                               f'Гравці:\n'
+                                                               f'{player_list}',
+                                                          parse_mode=ParseMode.HTML,
+                                                          reply_markup=reply_markup
+                                                          )
+                track_user_message(user_id, msg)
         else:
             await context.bot.edit_message_text(chat_id=user_id, message_id=msg_id,
                                                 text='Ласкаво просимо до гри '
@@ -149,3 +171,27 @@ async def default_update(host_id, exit_markup, game_id, player_list, user_id_lis
                                                 f'{player_list}',
                                                 parse_mode=ParseMode.HTML,
                                                 reply_markup=exit_markup)
+
+
+async def back_to_admin_menu(user_id, context: CallbackContext, interact=False):
+    reply_markup = user_states[user_id]['admin_markup']
+    text = user_states[user_id]['admin_text']
+    message_id = user_states[user_id]['admin_msg_id']
+
+    if 'kick_player' in user_states[user_id]:
+        del user_states[user_id]['kick_player']
+
+    if 'ban_player' in user_states[user_id]:
+        del user_states[user_id]['ban_player']
+
+    if 'unban_player' in user_states[user_id]:
+        del user_states[user_id]['unban_player']
+
+    if interact:
+        await context.bot.delete_message(chat_id=user_id, message_id=message_id)
+        msg = await context.bot.send_message(text=text, reply_markup=reply_markup,
+                                             chat_id=user_id)
+        user_states[user_id]['admin_msg_id'] = msg.message_id
+    else:
+        await context.bot.edit_message_text(text=text, reply_markup=reply_markup,
+                                            message_id=message_id, chat_id=user_id)
