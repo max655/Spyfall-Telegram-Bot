@@ -182,6 +182,11 @@ async def button(update: Update, context: CallbackContext) -> None:
                                              reply_markup=BACK_MARKUP)
         track_user_message(user_id, msg)
 
+        if user_id in start_messages:
+            start_messages[user_id] = []
+
+        start_messages[user_id].append(msg.message_id)
+
         if user_id not in user_states:
             user_states[user_id] = {}
 
@@ -190,7 +195,7 @@ async def button(update: Update, context: CallbackContext) -> None:
     elif query.data == 'go_back':
         if any(user_id in room['players'] for room in rooms.values()):
             return
-        
+
         if user_id in user_states:
             del user_states[user_id]
 
@@ -199,6 +204,15 @@ async def button(update: Update, context: CallbackContext) -> None:
 
         msg = await context.bot.send_message(text='Ви повернулися до головного меню.',
                                              reply_markup=START_MARKUP, chat_id=user_id)
+
+        if user_id not in start_messages:
+            start_messages[user_id] = []
+
+        if user_id in start_messages:
+            start_messages[user_id] = []
+
+        start_messages[user_id].append(msg.message_id)
+
         track_user_message(user_id, msg)
 
     elif query.data.startswith('exit_game_'):
