@@ -448,6 +448,9 @@ async def button(update: Update, context: CallbackContext) -> None:
         if user_id not in user_states:
             user_states[user_id] = {}
 
+        if not (any(user_id in room['players'] for room in rooms.values())):
+            return
+
         if 'admin_msg_id' in user_states[user_id]:
             return
 
