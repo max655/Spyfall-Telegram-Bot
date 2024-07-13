@@ -126,28 +126,6 @@ async def start(update: Update, context: CallbackContext) -> None:
             user_states[user_id] = {}
 
         await join_game(user_id, game_id, host_id, username, context)
-    else:
-        player_list = "\n".join(player['username'] for player in rooms[game_id]['players'].values())
-        if user_id in user_messages:
-            await clear_previous_message(user_id, context)
-
-        if user_id not in user_states:
-            user_states[user_id] = {}
-
-        keyboard = [[InlineKeyboardButton('Почати гру', callback_data=f'start_game_{game_id}')],
-                    [InlineKeyboardButton('Відмінити гру', callback_data=f'deny_game_{game_id}')],
-                    [InlineKeyboardButton('Адмін-меню', callback_data=f'admin_menu_{game_id}')]]
-        reply_markup = InlineKeyboardMarkup(keyboard)
-
-        msg = await context.bot.send_message(chat_id=user_id,
-                                             text=f'Після того, як всі зайдуть, натисніть <b>Почати</b>.\n\n'
-                                                  f'Гравці:\n'
-                                                  f'{player_list}',
-                                             parse_mode=ParseMode.HTML,
-                                             reply_markup=reply_markup
-                                             )
-        track_user_message(user_id, msg)
-        rooms[game_id]['players'][user_id]['message_id'] = msg.message_id
 
 
 async def button(update: Update, context: CallbackContext) -> None:
@@ -583,13 +561,28 @@ async def handle_message(update: Update, context: CallbackContext) -> None:
             await context.bot.send_message(chat_id=user_id,
                                            text='В списку немає такого гравця.')
 
+    elif user_states.get(user_id, {}).get('guess_map'):
+        text = update.message.text
+        text = text.lower()
+
+        game_id = user_states[user_id]['game_id']
+        game_map = rooms[game_id]['map']
+        game_map = game_map.lower()
+
+        if text == game_map:
+            await context.bot.send_message(text='Ви вгадали карту! Ви виграли!',
+                                           chat_id=user_id)
+        else:
+            await context.bot.send_message(text='Ви не вгадали карту. Ви програли!',
+                                           chat_id=user_id)
+
     elif user_states.get(user_id, {}).get('in_game'):
         text = update.message.text
         game_id = user_states[user_id]['game_id']
         player_list = [player['username'] for player_id, player in rooms[game_id]['players'].items()
                        if player_id != user_id]
 
-        await handle_game_message(text, user_id, player_list, context)
+        await handle_game_message(text, user_id, player_list, update, context)
 
     else:
         await context.bot.send_message(text='Неправильна команда.', chat_id=user_id)

@@ -1,7 +1,7 @@
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, KeyboardButton, ReplyKeyboardMarkup
 from telegram.ext import CallbackContext
 from telegram.constants import ParseMode
-from common import user_messages, rooms, START_MARKUP, user_states, games_ban_list
+from common import rooms, user_states
 from db_spyfall import get_dictionary_name, get_places_for_dictionary
 import random
 
@@ -35,8 +35,11 @@ async def process_game(game_id, host_id, context: CallbackContext):
                                            reply_markup=spy_menu())
         else:
             places_str = ', '.join(get_places_for_dictionary(random_number))
+            game_map = get_dictionary_name(random_number)
+            rooms[game_id]['map'] = game_map
+
             text = ('<b>Карта:</b>\n'
-                    f'{get_dictionary_name(random_number)}\n'
+                    f'{game_map}\n'
                     f'<b>Місця:</b> {places_str}\n'
                     f'Ваша ціль - визначити серед гравців '
                     f'шпигуна, в ході гри шукаючи "своїх" гравців.')
@@ -48,7 +51,7 @@ async def process_game(game_id, host_id, context: CallbackContext):
                                            reply_markup=main_menu())
 
 
-async def handle_game_message(text, user_id, player_list, context: CallbackContext):
+async def handle_game_message(text, user_id, player_list, update: Update, context: CallbackContext):
     player_keyboard = [[InlineKeyboardButton(uname, callback_data=f'select_player_{uname}')] for uname in player_list]
     reply_markup = InlineKeyboardMarkup(player_keyboard)
 
@@ -57,6 +60,12 @@ async def handle_game_message(text, user_id, player_list, context: CallbackConte
                                        text='Ви запустили голосування.\n'
                                             'Виберіть гравця, якого вважаєте шпигуном:',
                                        reply_markup=reply_markup)
+
+    elif text == 'Вгадати карту':
+        await context.bot.send_message(chat_id=user_id,
+                                       text='Введіть назву карти:')
+        user_states[user_id]['guess_map'] = True
+
     else:
         await context.bot.send_message(text='Неправильна команда.', chat_id=user_id)
 
