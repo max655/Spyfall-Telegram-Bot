@@ -204,4 +204,6 @@ if __name__ == "__main__":
         print(row)
 
     places = get_places_for_dictionary(1)
+    dictionary = get_dictionary_name(1)
+    print(dictionary)
     print(places)

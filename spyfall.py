@@ -6,10 +6,11 @@ from telegram.ext import Application, CommandHandler, MessageHandler, CallbackQu
 from telegram.constants import ParseMode
 from db_spyfall import fetch_table, get_dictionary_name, get_places_for_dictionary
 from common import (user_states, user_messages, rooms, START_KEYBOARD, START_MARKUP, BACK_MARKUP, games_ban_list,
-                    start_messages)
+                    start_messages, MAX_ROOM_SIZE)
 from functions import (clear_previous_message, track_user_message, join_game, update_messages,
                        generate_unique_game_id, get_player_id_by_username, back_to_admin_menu,
                        find_game_id_with_user)
+from game import process_game, handle_game_message
 import copy
 
 
@@ -61,7 +62,7 @@ async def start(update: Update, context: CallbackContext) -> None:
             if user_id in user_messages:
                 try:
                     if 'exit_markup' in user_states[user_id]:
-                        await clear_previous_message(user_id, context, update, text=text)
+                        await clear_previous_message(user_id, context)
                 except BadRequest:
                     pass
 
@@ -82,6 +83,11 @@ async def start(update: Update, context: CallbackContext) -> None:
             await context.bot.send_message(chat_id=user_id,
                                            text='Вас заблоковано в цій грі.')
             return
+
+    if len(rooms[game_id]['players']) == MAX_ROOM_SIZE:
+        await context.bot.send_message(chat_id=user_id,
+                                       text='Кімната вже заповнена.')
+        return
 
     room_with_user = None
     game_with_user = None
@@ -123,12 +129,12 @@ async def start(update: Update, context: CallbackContext) -> None:
     else:
         player_list = "\n".join(player['username'] for player in rooms[game_id]['players'].values())
         if user_id in user_messages:
-            await clear_previous_message(user_id, context, update)
+            await clear_previous_message(user_id, context)
 
         if user_id not in user_states:
             user_states[user_id] = {}
 
-        keyboard = [[InlineKeyboardButton('Почати гру', callback_data='start_game')],
+        keyboard = [[InlineKeyboardButton('Почати гру', callback_data=f'start_game_{game_id}')],
                     [InlineKeyboardButton('Відмінити гру', callback_data=f'deny_game_{game_id}')],
                     [InlineKeyboardButton('Адмін-меню', callback_data=f'admin_menu_{game_id}')]]
         reply_markup = InlineKeyboardMarkup(keyboard)
@@ -155,7 +161,8 @@ async def button(update: Update, context: CallbackContext) -> None:
         reply_markup = InlineKeyboardMarkup(keyboard)
 
         message = await query.edit_message_text(text='Для початку гри я згенерую посилання,'
-                                                     ' по якому зможуть підключитися друзі.\n'
+                                                     ' по якому зможуть підключитися друзі. '
+                                                     'Максимальна кількість гравців - 8.\n'
                                                      'Створити гру?', reply_markup=reply_markup)
 
         if not (any(user_id in room['players'] for room in rooms.values())):
@@ -184,7 +191,7 @@ async def button(update: Update, context: CallbackContext) -> None:
         if user_id not in rooms[game_id]:
             rooms[game_id]['players'][user_id]['username'] = username
 
-        keyboard = [[InlineKeyboardButton('Почати гру', callback_data='start_game')],
+        keyboard = [[InlineKeyboardButton('Почати гру', callback_data=f'start_game_{game_id}')],
                     [InlineKeyboardButton('Відмінити гру', callback_data=f'deny_game_{game_id}')],
                     [InlineKeyboardButton('Адмін-меню', callback_data=f'admin_menu_{game_id}')]]
         reply_markup = InlineKeyboardMarkup(keyboard)
@@ -194,10 +201,9 @@ async def button(update: Update, context: CallbackContext) -> None:
         player_list = "\n".join(player['username'] for player in rooms[game_id]['players'].values())
 
         if user_id in user_messages:
-            await clear_previous_message(user_id, context, update)
+            await clear_previous_message(user_id, context)
 
-        await context.bot.send_message(text='Ваше посилання:\n'
-                                            f'{link}',
+        await context.bot.send_message(text=f'{link}',
                                        chat_id=user_id)
 
         message = await context.bot.send_message(text=f'Після того, як всі зайдуть, натисніть <b>Почати</b>.\n\n'
@@ -229,7 +235,7 @@ async def button(update: Update, context: CallbackContext) -> None:
             message_text += f'{dict_id}. {name}\n'
 
         if user_id in user_messages:
-            await clear_previous_message(user_id, context, update)
+            await clear_previous_message(user_id, context)
 
         msg = await context.bot.send_message(text=f'{message_text}Введіть номер локації:', chat_id=user_id,
                                              reply_markup=BACK_MARKUP)
@@ -253,7 +259,7 @@ async def button(update: Update, context: CallbackContext) -> None:
             del user_states[user_id]
 
         if user_id in user_messages:
-            await clear_previous_message(user_id, context, update)
+            await clear_previous_message(user_id, context)
 
         msg = await context.bot.send_message(text='Ви повернулися до головного меню.',
                                              reply_markup=START_MARKUP, chat_id=user_id)
@@ -272,7 +278,7 @@ async def button(update: Update, context: CallbackContext) -> None:
         game_id = query.data.split('_')[-1]
 
         if user_id in user_messages:
-            await clear_previous_message(user_id, context, update)
+            await clear_previous_message(user_id, context)
 
         if 'exit_markup' in user_states[user_id]:
             del user_states[user_id]['exit_markup']
@@ -337,7 +343,7 @@ async def button(update: Update, context: CallbackContext) -> None:
                               deny_game=True)
 
         if game_id in rooms:
-            await clear_previous_message(user_id, context, update)
+            await clear_previous_message(user_id, context)
 
             if 'admin_msg_id' in user_states[user_id]:
                 try:
@@ -477,6 +483,25 @@ async def button(update: Update, context: CallbackContext) -> None:
         await context.bot.delete_message(chat_id=user_id, message_id=user_states[user_id]['admin_msg_id'])
         del user_states[user_id]['admin_msg_id']
 
+    elif query.data.startswith('start_game_'):
+        game_id = query.data.split('_')[-1]
+        host_id = rooms[game_id]['host_id']
+        user_id_list = [user_id for user_id in rooms[game_id]['players']]
+
+        for user_id in user_id_list:
+            if user_id not in user_states:
+                user_states[user_id] = {}
+
+            user_states[user_id]['in_game'] = True
+            user_states[user_id]['game_id'] = game_id
+
+        await process_game(game_id, host_id, context)
+
+    elif query.data.startswith('select_player_'):
+        player_name = query.data.split('_')[-1]
+        await context.bot.send_message(text=f'Ви проголосували за {player_name}.',
+                                       chat_id=user_id)
+
 
 async def handle_message(update: Update, context: CallbackContext) -> None:
     user_id = update.message.from_user.id
@@ -557,6 +582,14 @@ async def handle_message(update: Update, context: CallbackContext) -> None:
         else:
             await context.bot.send_message(chat_id=user_id,
                                            text='В списку немає такого гравця.')
+
+    elif user_states.get(user_id, {}).get('in_game'):
+        text = update.message.text
+        game_id = user_states[user_id]['game_id']
+        player_list = [player['username'] for player_id, player in rooms[game_id]['players'].items()
+                       if player_id != user_id]
+
+        await handle_game_message(text, user_id, player_list, context)
 
     else:
         await context.bot.send_message(text='Неправильна команда.', chat_id=user_id)

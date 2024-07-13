@@ -1,5 +1,5 @@
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import Application, CommandHandler, MessageHandler, CallbackQueryHandler, CallbackContext, filters
+from telegram.ext import CallbackContext
 from telegram.constants import ParseMode
 from common import user_messages, rooms, START_MARKUP, user_states, games_ban_list
 import secrets
@@ -41,7 +41,7 @@ def track_user_message(user_id, message):
     user_messages[user_id].append(message.message_id)
 
 
-async def clear_previous_message(user_id, context: CallbackContext, update: Update, text=None):
+async def clear_previous_message(user_id, context: CallbackContext):
     await context.bot.delete_message(chat_id=user_id, message_id=user_messages[user_id][-1])
 
 
@@ -143,7 +143,7 @@ async def default_update(host_id, exit_markup, game_id, player_list, user_id_lis
 
     for user_id, msg_id in zip(user_id_list, msg_id_list):
         if user_id == host_id:
-            keyboard = [[InlineKeyboardButton('Почати гру', callback_data='start_game')],
+            keyboard = [[InlineKeyboardButton('Почати гру', callback_data=f'start_game_{game_id}')],
                         [InlineKeyboardButton('Відмінити гру', callback_data=f'deny_game_{game_id}')],
                         [InlineKeyboardButton('Адмін-меню', callback_data=f'admin_menu_{game_id}')]]
             reply_markup = InlineKeyboardMarkup(keyboard)
