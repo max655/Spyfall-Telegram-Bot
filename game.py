@@ -14,7 +14,8 @@ def main_menu():
 
 
 def spy_menu():
-    game_keyboard = [[KeyboardButton('Вгадати карту')]]
+    game_keyboard = [[KeyboardButton('Запустити голосування')],
+                     [KeyboardButton('Вгадати карту')]]
     return ReplyKeyboardMarkup(game_keyboard, resize_keyboard=True)
 
 
@@ -27,6 +28,8 @@ async def process_game(game_id, host_id, context: CallbackContext):
             text = ('Ви шпигун! Ваша ціль - '
                     'вгадати місце перебування інших гравців, '
                     'не видавши самого себе.')
+
+            rooms[game_id]['players'][user_id]['spy'] = True
 
             if user_id == host_id:
                 text += ' <b>Ви першим задаєте питання одному із гравців.</b>'
@@ -51,21 +54,50 @@ async def process_game(game_id, host_id, context: CallbackContext):
                                            reply_markup=main_menu())
 
 
-async def handle_game_message(text, user_id, player_list, update: Update, context: CallbackContext):
-    player_keyboard = [[InlineKeyboardButton(uname, callback_data=f'select_player_{uname}')] for uname in player_list]
-    reply_markup = InlineKeyboardMarkup(player_keyboard)
+async def handle_game_message(game_id, text_bot, user_id, username, player_id_list,
+                              context: CallbackContext):
 
-    if text == 'Запустити голосування':
-        await context.bot.send_message(chat_id=user_id,
-                                       text='Ви запустили голосування.\n'
-                                            'Виберіть гравця, якого вважаєте шпигуном:',
-                                       reply_markup=reply_markup)
+    if text_bot == 'Запустити голосування':
+        rooms[game_id]['voting'] = True
 
-    elif text == 'Вгадати карту':
+        for game_player_id in player_id_list:
+            player_list = [player['username'] for player_id, player in rooms[game_id]['players'].items()
+                           if player_id != game_player_id]
+            player_keyboard = [[InlineKeyboardButton(uname, callback_data=f'select_player_{uname}')] for uname in
+                               player_list]
+            pass_option = [InlineKeyboardButton('Пропустити хід', callback_data=f'skip_turn_{game_player_id}')]
+            player_keyboard.append(pass_option)
+
+            reply_markup = InlineKeyboardMarkup(player_keyboard)
+
+            if game_player_id == user_id:
+                text_1 = 'Ви запустили голосування.'
+                text_2 = '\nВиберіть гравця, якого вважаєте шпигуном або пропустіть хід:'
+                text_3 = '\nОберіть гравця або пропустіть хід:'
+
+                if 'spy' in rooms[game_id]['players'][game_player_id]:
+                    text = text_1 + text_3
+                else:
+                    text = text_1 + text_2
+
+            else:
+                text_1 = f'{username} запустив(-ла) голосування.'
+                text_2 = '\nВиберіть гравця, якого вважаєте шпигуном або пропустіть хід:'
+                text_3 = '\nОберіть гравця або пропустіть хід:'
+
+                if 'spy' in rooms[game_id]['players'][game_player_id]:
+                    text = text_1 + text_3
+                else:
+                    text = text_1 + text_2
+
+            await context.bot.send_message(chat_id=game_player_id,
+                                           text=text,
+                                           reply_markup=reply_markup)
+
+    elif text_bot == 'Вгадати карту':
         await context.bot.send_message(chat_id=user_id,
                                        text='Введіть назву карти:')
         user_states[user_id]['guess_map'] = True
 
     else:
         await context.bot.send_message(text='Неправильна команда.', chat_id=user_id)
-

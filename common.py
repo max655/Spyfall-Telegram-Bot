@@ -5,6 +5,7 @@ user_messages = {}
 rooms = {}
 games_ban_list = {}
 start_messages = {}
+voted_users = {}
 MAX_ROOM_SIZE = 8
 
 START_KEYBOARD = [[InlineKeyboardButton("Створити гру", callback_data='create_room')],

@@ -6,7 +6,7 @@ from telegram.ext import Application, CommandHandler, MessageHandler, CallbackQu
 from telegram.constants import ParseMode
 from db_spyfall import fetch_table, get_dictionary_name, get_places_for_dictionary
 from common import (user_states, user_messages, rooms, START_KEYBOARD, START_MARKUP, BACK_MARKUP, games_ban_list,
-                    start_messages, MAX_ROOM_SIZE)
+                    start_messages, MAX_ROOM_SIZE, voted_users)
 from functions import (clear_previous_message, track_user_message, join_game, update_messages,
                        generate_unique_game_id, get_player_id_by_username, back_to_admin_menu,
                        find_game_id_with_user)
@@ -477,8 +477,71 @@ async def button(update: Update, context: CallbackContext) -> None:
 
     elif query.data.startswith('select_player_'):
         player_name = query.data.split('_')[-1]
-        await context.bot.send_message(text=f'Ви проголосували за {player_name}.',
-                                       chat_id=user_id)
+        game_id = user_states[user_id]['game_id']
+
+        if 'voting' in rooms[game_id]:
+            if game_id not in voted_users:
+                voted_users[game_id] = []
+
+            voted_users[game_id].append(user_id)
+
+            await context.bot.send_message(text=f'Ви проголосували за {player_name}.',
+                                           chat_id=user_id)
+
+            user_id_list = [user_id for user_id in rooms[game_id]['players']]
+
+            if 'voting' in rooms[game_id]:
+                if len(voted_users[game_id]) == len(user_id_list):
+                    for user_id in user_id_list:
+                        await context.bot.send_message(text='Голосування завершено!',
+                                                       chat_id=user_id)
+                    del rooms[game_id]['voting']
+                    del voted_users[game_id]
+
+        else:
+            await context.bot.send_message(text='Голосування вже завершилось.\n'
+                                                'Ви більше не можете проголосувати.',
+                                           chat_id=user_id)
+
+    elif query.data.startswith('skip_turn_'):
+        user_id = int(query.data.split('_')[-1])
+        game_id = user_states[user_id]['game_id']
+
+        text_1 = 'Ви пропустили хід.'
+        text_2 = '\nДочекайтеся завершення голосування.'
+
+        if 'voting' in rooms[game_id]:
+            if game_id not in voted_users:
+                voted_users[game_id] = []
+
+            voted_users[game_id].append(user_id)
+
+            player_id_list = [user_id for user_id in rooms[game_id]['players']]
+
+            if 'voting' in rooms[game_id]:
+                if len(voted_users[game_id]) == len(player_id_list):
+                    for player_id in player_id_list:
+                        if player_id != user_id:
+                            await context.bot.send_message(text='Голосування завершено!',
+                                                           chat_id=player_id)
+
+                    del rooms[game_id]['voting']
+
+            if 'voting' in rooms[game_id]:
+                text = text_1 + text_2
+                await context.bot.send_message(text=text,
+                                               chat_id=user_id)
+            elif voted_users[game_id][-1] == user_id:
+                text = text_1
+                await context.bot.send_message(text=text,
+                                               chat_id=user_id)
+                await context.bot.send_message(text='Голосування завершено!',
+                                               chat_id=user_id)
+                del voted_users[game_id]
+        else:
+            await context.bot.send_message(text='Голосування вже завершилось.\n'
+                                                'Ви більше не можете проголосувати.',
+                                           chat_id=user_id)
 
 
 async def handle_message(update: Update, context: CallbackContext) -> None:
@@ -579,10 +642,11 @@ async def handle_message(update: Update, context: CallbackContext) -> None:
     elif user_states.get(user_id, {}).get('in_game'):
         text = update.message.text
         game_id = user_states[user_id]['game_id']
-        player_list = [player['username'] for player_id, player in rooms[game_id]['players'].items()
-                       if player_id != user_id]
+        player_id_list = [user_id for user_id in rooms[game_id]['players']]
+        username = rooms[game_id]['players'][user_id]['username']
 
-        await handle_game_message(text, user_id, player_list, update, context)
+        await handle_game_message(game_id, text, user_id, username,
+                                  player_id_list, context)
 
     else:
         await context.bot.send_message(text='Неправильна команда.', chat_id=user_id)
