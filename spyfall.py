@@ -1,12 +1,12 @@
 import logging
 import json
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram import Update, ReplyKeyboardRemove, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.error import BadRequest
 from telegram.ext import Application, CommandHandler, MessageHandler, CallbackQueryHandler, CallbackContext, filters
 from telegram.constants import ParseMode
 from db_spyfall import fetch_table, get_dictionary_name, get_places_for_dictionary
 from common import (user_states, user_messages, rooms, START_KEYBOARD, START_MARKUP, BACK_MARKUP, games_ban_list,
-                    start_messages, MAX_ROOM_SIZE, voted_users)
+                    start_messages, MAX_ROOM_SIZE, voted_users, vote_counts)
 from functions import (clear_previous_message, track_user_message, join_game, update_messages,
                        generate_unique_game_id, get_player_id_by_username, back_to_admin_menu,
                        find_game_id_with_user)
@@ -287,6 +287,9 @@ async def button(update: Update, context: CallbackContext) -> None:
 
         reply_markup = InlineKeyboardMarkup(keyboard)
 
+        await context.bot.send_message(chat_id=user_id, text='Ви успішно вийшли зі гри.',
+                                       reply_markup=ReplyKeyboardRemove())
+
         msg = await context.bot.send_message(text='Ви повернулися до головного меню.',
                                              reply_markup=reply_markup, chat_id=user_id)
 
@@ -343,7 +346,10 @@ async def button(update: Update, context: CallbackContext) -> None:
 
             del rooms[game_id]
 
-            msg = await context.bot.send_message(text='Ви успішно відмінили гру.',
+            await context.bot.send_message(chat_id=user_id, text='Ви успішно відмінили гру.',
+                                           reply_markup=ReplyKeyboardRemove())
+
+            msg = await context.bot.send_message(text='Ви повернулися до головного меню.',
                                                  reply_markup=START_MARKUP, chat_id=user_id)
             if user_id not in start_messages:
                 start_messages[user_id] = []
@@ -479,6 +485,14 @@ async def button(update: Update, context: CallbackContext) -> None:
         player_name = query.data.split('_')[-1]
         game_id = user_states[user_id]['game_id']
 
+        if game_id not in vote_counts:
+            vote_counts[game_id] = {}
+
+        if player_name not in vote_counts[game_id]:
+            vote_counts[game_id][player_name] = 0
+
+        vote_counts[game_id][player_name] += 1
+
         if 'voting' in rooms[game_id]:
             if game_id not in voted_users:
                 voted_users[game_id] = []
@@ -492,11 +506,16 @@ async def button(update: Update, context: CallbackContext) -> None:
 
             if 'voting' in rooms[game_id]:
                 if len(voted_users[game_id]) == len(user_id_list):
+                    kicked_player = max(vote_counts[game_id], key=vote_counts[game_id].get)
+                    vote_count = vote_counts[game_id][kicked_player]
+
                     for user_id in user_id_list:
-                        await context.bot.send_message(text='Голосування завершено!',
+                        await context.bot.send_message(text=f'Голосування завершено! Виганяємо гравця {kicked_player}, '
+                                                            f'проголосували: {vote_count}',
                                                        chat_id=user_id)
                     del rooms[game_id]['voting']
                     del voted_users[game_id]
+                    vote_counts[game_id].clear()
 
         else:
             await context.bot.send_message(text='Голосування вже завершилось.\n'
@@ -520,24 +539,54 @@ async def button(update: Update, context: CallbackContext) -> None:
 
             if 'voting' in rooms[game_id]:
                 if len(voted_users[game_id]) == len(player_id_list):
-                    for player_id in player_id_list:
-                        if player_id != user_id:
-                            await context.bot.send_message(text='Голосування завершено!',
-                                                           chat_id=player_id)
+                    if game_id in vote_counts:
+                        kicked_player = max(vote_counts[game_id], key=vote_counts[game_id].get)
+                        vote_count = vote_counts[game_id][kicked_player]
 
-                    del rooms[game_id]['voting']
+                        for player_id in player_id_list:
+                            if player_id == user_id:
+                                text = text_1
+                                await context.bot.send_message(text=text,
+                                                               chat_id=user_id)
+
+                            await context.bot.send_message(text=f'Голосування завершено! Виганяємо гравця '
+                                                                f'{kicked_player}, '
+                                                                f'проголосували: {vote_count}',
+                                                           chat_id=player_id)
+                        del rooms[game_id]['voting']
+                        del voted_users[game_id]
+                        vote_counts[game_id].clear()
+                    else:
+                        text = text_1
+                        await context.bot.send_message(text=text,
+                                                       chat_id=user_id)
+                        for player_id in player_id_list:
+                            await context.bot.send_message(text=f'Голосування завершено! Ніхто не проголосував.\n'
+                                                                f'Гра продовжується.',
+                                                           chat_id=player_id)
+                        del rooms[game_id]['voting']
+                        del voted_users[game_id]
 
             if 'voting' in rooms[game_id]:
                 text = text_1 + text_2
                 await context.bot.send_message(text=text,
                                                chat_id=user_id)
-            elif voted_users[game_id][-1] == user_id:
-                text = text_1
-                await context.bot.send_message(text=text,
-                                               chat_id=user_id)
-                await context.bot.send_message(text='Голосування завершено!',
-                                               chat_id=user_id)
-                del voted_users[game_id]
+
+            elif game_id in voted_users:
+                if voted_users[game_id][-1] == user_id:
+                    if vote_counts:
+                        kicked_player = max(vote_counts[game_id], key=vote_counts[game_id].get)
+                        vote_count = vote_counts[game_id][kicked_player]
+
+                        text = text_1
+                        await context.bot.send_message(text=text,
+                                                       chat_id=user_id)
+                        await context.bot.send_message(text=f'Голосування завершено! Виганяємо гравця {kicked_player}, '
+                                                            f'проголосували: {vote_count}',
+                                                       chat_id=user_id)
+                        del voted_users[game_id]
+                        vote_counts[game_id].clear()
+
         else:
             await context.bot.send_message(text='Голосування вже завершилось.\n'
                                                 'Ви більше не можете проголосувати.',

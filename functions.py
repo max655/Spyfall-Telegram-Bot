@@ -1,4 +1,4 @@
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram import ReplyKeyboardRemove, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import CallbackContext
 from telegram.constants import ParseMode
 from common import user_messages, rooms, START_MARKUP, user_states, games_ban_list
@@ -83,6 +83,7 @@ async def update_messages(game_id, exit_markup, user_id_list, msg_id_list, host_
     if deny_game:
         for user_id, msg_id in zip(user_id_list, msg_id_list):
             if user_id != host_id:
+                await context.bot.send_message(chat_id=user_id, text='Гра завершена.', reply_markup=ReplyKeyboardRemove())
                 await context.bot.edit_message_text(chat_id=user_id,
                                                     message_id=msg_id,
                                                     text=f'{host_username} відмінив(-ла) гру.',
