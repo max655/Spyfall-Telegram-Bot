@@ -1,7 +1,8 @@
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, KeyboardButton, ReplyKeyboardMarkup
+from telegram import (InlineKeyboardButton, InlineKeyboardMarkup, KeyboardButton, ReplyKeyboardMarkup,
+                      ReplyKeyboardRemove)
 from telegram.ext import CallbackContext
 from telegram.constants import ParseMode
-from common import rooms, user_states
+from common import rooms, user_states, voted_users, vote_counts, START_MARKUP, games_ban_list
 from db_spyfall import get_dictionary_name, get_places_for_dictionary
 import random
 
@@ -101,3 +102,65 @@ async def handle_game_message(game_id, text_bot, user_id, username, player_id_li
 
     else:
         await context.bot.send_message(text='Неправильна команда.', chat_id=user_id)
+
+
+async def kick_player_from_game(game_id, player_id_list, context: CallbackContext):
+    if game_id in vote_counts:
+        kicked_player = max(vote_counts[game_id], key=vote_counts[game_id].get)
+        vote_count = vote_counts[game_id][kicked_player]
+
+        kicked_player_id = None
+        for user_id, player_dict in rooms[game_id]['players'].items():
+            if player_dict['username'] == kicked_player:
+                kicked_player_id = user_id
+
+        for player_id in player_id_list:
+            await context.bot.send_message(text=f'Голосування завершено! Виганяємо гравця '
+                                                f'{kicked_player}, '
+                                                f'проголосували: {vote_count}',
+                                           chat_id=player_id)
+
+            if 'spy' in rooms[game_id]['players'][kicked_player_id]:
+                await context.bot.send_message(text=f'Гра завершена! Гравець {kicked_player} був шпигуном.',
+                                               chat_id=player_id)
+
+                if player_id != kicked_player_id:
+                    await context.bot.send_message(chat_id=player_id,
+                                                   text='Кінець гри.\n'
+                                                        'Створіть нову гру або '
+                                                        'приєднайтеся до іншої гри, щоб почати знову.',
+                                                   reply_markup=ReplyKeyboardRemove())
+
+                    await context.bot.send_message(chat_id=player_id,
+                                                   text='Стартове меню:',
+                                                   reply_markup=START_MARKUP)
+                del rooms[game_id]
+            else:
+                await context.bot.send_message(text=f'Гра продовжується! Гравець {kicked_player} був звичайним гравцем.',
+                                               chat_id=player_id)
+
+        del rooms[game_id]['players'][kicked_player_id]
+
+        if game_id not in games_ban_list:
+            games_ban_list[game_id] = []
+
+        games_ban_list[game_id].append(kicked_player)
+
+        await context.bot.send_message(chat_id=kicked_player_id, text='Вас вигнали зі гри.',
+                                       reply_markup=ReplyKeyboardRemove())
+
+        await context.bot.send_message(chat_id=kicked_player_id,
+                                       text='Стартове меню:',
+                                       reply_markup=START_MARKUP)
+
+        del rooms[game_id]['voting']
+        del voted_users[game_id]
+        del vote_counts[game_id]
+    else:
+        for player_id in player_id_list:
+            await context.bot.send_message(text=f'Голосування завершено! Ніхто не проголосував.\n'
+                                                f'Гра продовжується.',
+                                           chat_id=player_id)
+
+        del rooms[game_id]['voting']
+        del voted_users[game_id]
