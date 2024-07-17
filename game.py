@@ -114,6 +114,7 @@ async def kick_player_from_game(game_id, player_id_list, context: CallbackContex
             if player_dict['username'] == kicked_player:
                 kicked_player_id = user_id
 
+        game_over = False
         for player_id in player_id_list:
             await context.bot.send_message(text=f'Голосування завершено! Виганяємо гравця '
                                                 f'{kicked_player}, '
@@ -123,6 +124,7 @@ async def kick_player_from_game(game_id, player_id_list, context: CallbackContex
             if 'spy' in rooms[game_id]['players'][kicked_player_id]:
                 await context.bot.send_message(text=f'Гра завершена! Гравець {kicked_player} був шпигуном.',
                                                chat_id=player_id)
+                game_over = True
 
                 if player_id != kicked_player_id:
                     await context.bot.send_message(chat_id=player_id,
@@ -134,7 +136,6 @@ async def kick_player_from_game(game_id, player_id_list, context: CallbackContex
                     await context.bot.send_message(chat_id=player_id,
                                                    text='Стартове меню:',
                                                    reply_markup=START_MARKUP)
-                del rooms[game_id]
             else:
                 await context.bot.send_message(text=f'Гра продовжується! Гравець {kicked_player} був звичайним гравцем.',
                                                chat_id=player_id)
@@ -153,7 +154,11 @@ async def kick_player_from_game(game_id, player_id_list, context: CallbackContex
                                        text='Стартове меню:',
                                        reply_markup=START_MARKUP)
 
-        del rooms[game_id]['voting']
+        if game_over:
+            del rooms[game_id]
+        else:
+            del rooms[game_id]['voting']
+            
         del voted_users[game_id]
         del vote_counts[game_id]
     else:
