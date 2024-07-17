@@ -49,7 +49,9 @@ async def start(update: Update, context: CallbackContext) -> None:
             game_id = find_game_id_with_user(user_id)
             host_id = rooms[game_id]['host_id']
 
-            if user_id == host_id:
+            if 'in_game' in user_states[user_id]:
+                callback_data = 'exit_started_game'
+            elif user_id == host_id:
                 callback_data = f'deny_game_{game_id}'
             else:
                 callback_data = f'exit_game_{game_id}'
@@ -77,6 +79,14 @@ async def start(update: Update, context: CallbackContext) -> None:
 
     host_id = int(text[7:index_non_digit])
     game_id = text[index_non_digit+8:]
+
+    player_id_list = [user_id for user_id in rooms[game_id]['players']]
+
+    for player_id in player_id_list:
+        if 'in_game' in user_states[player_id]:
+            await context.bot.send_message(chat_id=user_id,
+                                           text='Гра вже почалася.')
+            return
 
     if game_id in games_ban_list:
         if username in games_ban_list[game_id]:
@@ -302,6 +312,50 @@ async def button(update: Update, context: CallbackContext) -> None:
         start_messages[user_id].append(msg.message_id)
         track_user_message(user_id, msg)
 
+    elif query.data == 'exit_started_game':
+        game_id = user_states[user_id]['game_id']
+        players = rooms[game_id]['players']
+        username = players[user_id]['username']
+
+        user_id_list = [user_id for user_id in players]
+        msg_id_list = [player['message_id'] for player in players.values()]
+        host_id = rooms[game_id]['host_id']
+
+        await context.bot.send_message(chat_id=user_id,
+                                       text='Ви вийшли зі гри.',
+                                       reply_markup=ReplyKeyboardRemove())
+
+        await context.bot.send_message(chat_id=user_id,
+                                       text='Стартове меню:',
+                                       reply_markup=START_MARKUP)
+
+        spy = False
+
+        if 'spy' in players[user_id]:
+            spy = True
+
+        del players[user_id]
+
+        for player_id in players:
+            text_1 = f'{username} покинув(-ла) гру.'
+            text_2 = f'\nГра завершена, {username} був(-ла) шпигуном.'
+
+            if spy:
+                text = text_1 + text_2
+                await context.bot.send_message(chat_id=player_id,
+                                               text=text)
+            else:
+                text = text_1
+                await context.bot.send_message(chat_id=player_id,
+                                               text=text)
+        if spy:
+            del rooms[game_id]
+
+            for player_id in players:
+                await context.bot.send_message(chat_id=player_id,
+                                               text='Стартове меню:',
+                                               reply_markup=START_MARKUP)
+
     elif query.data.startswith('return_to_game_'):
         game_id = query.data.split('_')[-1]
         host_id = rooms[game_id]['host_id']
@@ -478,6 +532,12 @@ async def button(update: Update, context: CallbackContext) -> None:
 
             user_states[user_id]['in_game'] = True
             user_states[user_id]['game_id'] = game_id
+
+        for user_id, user_dict in rooms[game_id]['players'].items():
+            message_id = user_dict['message_id']
+            await context.bot.edit_message_reply_markup(chat_id=user_id,
+                                                        message_id=message_id,
+                                                        reply_markup=None)
 
         await process_game(game_id, host_id, context)
 

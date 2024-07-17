@@ -167,8 +167,7 @@ async def default_update(host_id, exit_markup, game_id, player_list, user_id_lis
                                                                f'Гравці:\n'
                                                                f'{player_list}',
                                                           parse_mode=ParseMode.HTML,
-                                                          reply_markup=reply_markup
-                                                          )
+                                                          reply_markup=reply_markup)
                 track_user_message(user_id, msg)
         else:
             msg = await context.bot.edit_message_text(chat_id=user_id, message_id=msg_id,
